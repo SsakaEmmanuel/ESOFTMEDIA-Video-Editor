@@ -35,7 +35,8 @@ import androidx.media3.effect.Contrast
 import androidx.media3.effect.HslAdjustment
 import androidx.media3.common.util.UnstableApi
 
-data class ClipSegment(val id:Int,val uri:Uri,val startMs:Long,val endMs:Long)\nprivate val Deep=Color(0xFF090A0F); private val Panel=Color(0xFF151720); private val Cyan=Color(0xFF00E5D4); private val Purple=Color(0xFF7B2CFF)
+data class ClipSegment(val id:Int,val uri:Uri,val startMs:Long,val endMs:Long)
+private val Deep=Color(0xFF090A0F); private val Panel=Color(0xFF151720); private val Cyan=Color(0xFF00E5D4); private val Purple=Color(0xFF7B2CFF)
 class MainActivity:ComponentActivity(){override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);setContent{EditorApp()}}}
 @Composable fun EditorApp(){
  val ctx=LocalContext.current; var video by remember{mutableStateOf<Uri?>(null)}; var section by remember{mutableStateOf("Edit")}; var tool by remember{mutableStateOf("None")}; var fav by remember{mutableStateOf(false)}
