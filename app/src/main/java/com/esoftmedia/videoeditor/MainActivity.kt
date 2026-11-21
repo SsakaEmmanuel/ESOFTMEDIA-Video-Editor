@@ -15,7 +15,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Cut
+import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
@@ -129,7 +129,7 @@ fun EditorApp() {
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    QuickTool("Trim", Icons.Default.Cut, Modifier.weight(1f))
+                    QuickTool("Trim", Icons.Default.ContentCut, Modifier.weight(1f))
                     QuickTool("Music", Icons.Default.MusicNote, Modifier.weight(1f))
                     QuickTool("Text", Icons.Default.TextFields, Modifier.weight(1f))
                     QuickTool("Effects", Icons.Default.Settings, Modifier.weight(1f))
@@ -449,7 +449,7 @@ private fun BottomBar() {
             .padding(vertical = 12.dp),
         horizontalArrangement = Arrangement.SpaceEvenly
     ) {
-        BottomItem("Edit", Icons.Default.Cut, true)
+        BottomItem("Edit", Icons.Default.ContentCut, true)
         BottomItem("Audio", Icons.Default.MusicNote, false)
         BottomItem("Text", Icons.Default.TextFields, false)
         BottomItem("Export", Icons.Default.Save, false)
