@@ -35,6 +35,9 @@ jobs:
       - name: Validate Android project
         run: gradle tasks --all
 
+      - name: Run timeline unit tests
+        run: gradle testDebugUnitTest --stacktrace
+
       - name: Build debug APK
         run: gradle assembleDebug --stacktrace
 
