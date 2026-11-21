@@ -35,7 +35,7 @@ class TimelineEditorTest {
         assertEquals("b", moved.clips[0].id)
         val duplicated = TimelineEditor.duplicate(moved, "b")
         assertEquals(3, duplicated.clips.size)
-        assertEquals("b", duplicated.clips[1].id)
+        assertEquals("b-copy", duplicated.clips[1].id)
         assertEquals(10_000L, duplicated.clips[2].timelineDurationMs)
     }
 
