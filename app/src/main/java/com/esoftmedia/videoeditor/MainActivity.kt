@@ -924,91 +924,187 @@ private fun effects(filter: String, b: Float, c: Float, s: Float, l: Float, aspe
         IconButton(onClick = save) { Icon(Icons.Default.Save, "Save project", tint = PAPER) }
     }
 }
-@Composable private fun Preview(player: ExoPlayer, hasVideo: Boolean, caption: String, import: () -> Unit) {
-    Box(Modifier.fillMaxWidth().height(255.dp).clip(RoundedCornerShape(24.dp)).background(Color(0xFF11131B)).border(1.dp, Color(0xFF292B37), RoundedCornerShape(22.dp))) {
-        if (hasVideo) {
-            AndroidView(factory = { PlayerView(it).apply { this.player = player; useController = false; resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT } }, update = { it.player = player }, modifier = Modifier.fillMaxSize())
-            if (caption.isNotBlank()) Text(caption, color = PAPER, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.BottomCenter).padding(12.dp).background(Color.Black.copy(alpha = .4f), RoundedCornerShape(6.dp)).padding(6.dp))
-        } else Column(Modifier.fillMaxSize().clickable(onClick = import), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            Icon(Icons.Default.PlayCircle, null, tint = AQUA, modifier = Modifier.size(48.dp)); Text("Tap to import videos", color = PAPER)
-        }
-        Text("PREVIEW", color = Color.LightGray, fontSize = 10.sp, modifier = Modifier.align(Alignment.TopStart).padding(12.dp))
-        IconButton(onClick = import, modifier = Modifier.align(Alignment.TopEnd)) { Icon(Icons.Default.Add, "Add video", tint = PAPER) }
-    }
-}
-@Composable private fun PlaybackBar(playing: Boolean, position: Long, duration: Long, toggle: () -> Unit, stop: () -> Unit, prev: () -> Unit, next: () -> Unit, seek: (Float) -> Unit) {
-    Column(Modifier.fillMaxWidth().background(CARD, RoundedCornerShape(14.dp)).padding(horizontal = 10.dp, vertical = 5.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = prev) { Icon(Icons.Default.SkipPrevious, "Previous", tint = PAPER) }
-            IconButton(onClick = stop) { Icon(Icons.Default.Stop, "Stop", tint = PAPER) }
-            IconButton(onClick = toggle, modifier = Modifier.background(VIOLET, CircleShape)) { Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, "Play or pause", tint = PAPER, modifier = Modifier.size(29.dp)) }
-            IconButton(onClick = next) { Icon(Icons.Default.SkipNext, "Next", tint = PAPER) }
-        }
-        Slider(position.toFloat().coerceIn(0f, duration.coerceAtLeast(1L).toFloat()), seek, valueRange = 0f..duration.coerceAtLeast(1L).toFloat(), modifier = Modifier.height(25.dp))
-        Row { Text(time(position), color = PAPER, fontSize = 10.sp); Spacer(Modifier.weight(1f)); Text(time(duration), color = Color.LightGray, fontSize = 10.sp) }
-    }
-}
-private fun time(ms: Long): String { val sec = ms.coerceAtLeast(0L) / 1000L; return "%02d:%02d".format(sec / 60L, sec % 60L) }
-@Composable private fun Quick(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, modifier: Modifier, click: () -> Unit) {
-    Column(modifier.background(CARD, RoundedCornerShape(14.dp)).clickable(onClick = click).padding(vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) { Icon(icon, label, tint = AQUA); Text(label, color = PAPER, fontSize = 11.sp) }
-}
-@Composable private fun Nav(active: String, choose: (String) -> Unit) {
-    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        listOf("Edit", "Filters", "Adjust", "Crop", "Effects", "Audio", "Text", "Elements", "Export").forEach {
-            Surface(color = if (it == active) VIOLET else CARD, shape = RoundedCornerShape(9.dp), modifier = Modifier.clickable { choose(it) }) { Text(it, color = PAPER, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) }
-        }
-    }
-}
-@Composable private fun TimelinePanel(
-    clips: List<VideoClip>, index: Int, active: VideoClip?, a: Float, b: Float,
-    choose: (Int) -> Unit, setRange: (Float, Float) -> Unit, trim: () -> Unit, split: () -> Unit,
-    duplicate: () -> Unit, delete: () -> Unit, move: (Int) -> Unit, undo: () -> Unit,
-    redo: () -> Unit, canUndo: Boolean, canRedo: Boolean, import: () -> Unit
+@Composable
+private fun Preview(
+    player: ExoPlayer,
+    hasVideo: Boolean,
+    caption: String,
+    modifier: Modifier = Modifier,
+    onImport: () -> Unit
 ) {
-    Column(Modifier.fillMaxWidth().background(CARD, RoundedCornerShape(15.dp)).padding(12.dp)) {
-        Text("TIMELINE & TRIM", color = AQUA, fontWeight = FontWeight.Bold)
-        if (clips.isEmpty()) { Text("Import videos to start editing.", color = Color.LightGray, fontSize = 12.sp); Action("Import videos", import) }
-        else {
-            Text(clips.size.toString() + " clip(s) • tap to select", color = PAPER, fontSize = 11.sp)
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                clips.forEachIndexed { i, clip ->
-                    Box(Modifier.width((clip.length / 1000f * 24f).coerceIn(82f, 180f).dp).height(54.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Brush.horizontalGradient(if (i == index) listOf(Color(0xFF7B2CFF), Color(0xFF00CFC4)) else listOf(Color(0xFF252936), Color(0xFF313647))))
-                        .border(if (i == index) 2.dp else 1.dp, if (i == index) AQUA else Color(0xFF414552), RoundedCornerShape(8.dp))
-                        .clickable { choose(i) }, contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("VIDEO " + (i + 1), color = PAPER, fontWeight = FontWeight.Bold, fontSize = 10.sp)
-                            Text(time(clip.length), color = PAPER.copy(alpha = .85f), fontSize = 10.sp)
+    Box(modifier.fillMaxWidth().background(Color(0xFF050505))) {
+        if (hasVideo) {
+            AndroidView(
+                factory = { context ->
+                    PlayerView(context).apply {
+                        this.player = player
+                        useController = false
+                        resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+                        setShutterBackgroundColor(android.graphics.Color.BLACK)
+                    }
+                },
+                update = { it.player = player },
+                modifier = Modifier.fillMaxSize()
+            )
+            if (caption.isNotBlank()) {
+                Text(
+                    caption, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp)
+                        .background(Color.Black.copy(alpha = .45f), RoundedCornerShape(5.dp))
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+            }
+        } else {
+            Column(
+                Modifier.fillMaxSize().clickable(onClick = onImport),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Icon(Icons.Default.PlayCircleFilled, null, tint = AQUA, modifier = Modifier.size(56.dp))
+                Spacer(Modifier.height(8.dp))
+                Text("Tap to import videos", color = PAPER, fontSize = 16.sp)
+            }
+        }
+        Text("PREVIEW", color = Color(0xFFBDBDBD), fontSize = 10.sp, modifier = Modifier.align(Alignment.TopStart).padding(10.dp))
+        IconButton(onClick = onImport, modifier = Modifier.align(Alignment.TopEnd)) {
+            Icon(Icons.Default.Add, "Add video", tint = Color.White, modifier = Modifier.size(27.dp))
+        }
+    }
+}
+
+@Composable
+private fun PlaybackBar(
+    playing: Boolean,
+    position: Long,
+    duration: Long,
+    toggle: () -> Unit,
+    stop: () -> Unit,
+    previous: () -> Unit,
+    next: () -> Unit,
+    seek: (Float) -> Unit,
+    canUndo: Boolean,
+    canRedo: Boolean,
+    undo: () -> Unit,
+    redo: () -> Unit
+) {
+    Column(
+        Modifier.fillMaxWidth().background(Color(0xFF242424)).padding(horizontal = 8.dp, vertical = 3.dp)
+    ) {
+        Row(
+            Modifier.fillMaxWidth().height(43.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            IconButton(onClick = previous, modifier = Modifier.size(38.dp)) { Icon(Icons.Default.SkipPrevious, "Previous clip", tint = Color.White, modifier = Modifier.size(24.dp)) }
+            IconButton(onClick = stop, modifier = Modifier.size(38.dp)) { Icon(Icons.Default.Stop, "Stop", tint = Color.White, modifier = Modifier.size(23.dp)) }
+            IconButton(onClick = toggle, modifier = Modifier.size(48.dp).background(VIOLET, CircleShape)) {
+                Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, "Play or pause", tint = Color.White, modifier = Modifier.size(29.dp))
+            }
+            Text(time(position) + " / " + time(duration), color = Color.LightGray, fontSize = 11.sp)
+            IconButton(onClick = undo, enabled = canUndo, modifier = Modifier.size(36.dp)) { Icon(Icons.Default.Undo, "Undo", tint = if (canUndo) Color.White else Color.DarkGray) }
+            IconButton(onClick = redo, enabled = canRedo, modifier = Modifier.size(36.dp)) { Icon(Icons.Default.Redo, "Redo", tint = if (canRedo) Color.White else Color.DarkGray) }
+            IconButton(onClick = next, modifier = Modifier.size(38.dp)) { Icon(Icons.Default.SkipNext, "Next clip", tint = Color.White, modifier = Modifier.size(24.dp)) }
+        }
+        if (duration > 0L) {
+            Slider(
+                value = position.toFloat().coerceIn(0f, duration.toFloat()),
+                onValueChange = seek,
+                valueRange = 0f..duration.toFloat(),
+                modifier = Modifier.fillMaxWidth().height(22.dp),
+                colors = SliderDefaults.colors(
+                    thumbColor = Color.White,
+                    activeTrackColor = Color(0xFFDE3D65),
+                    inactiveTrackColor = Color(0xFF565656)
+                )
+            )
+        }
+    }
+}
+
+@Composable
+private fun TimelinePanel(
+    clips: List<VideoClip>,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit,
+    onAddClip: () -> Unit,
+    onAddAudio: () -> Unit,
+    hasAudio: Boolean,
+    audioLabel: String,
+    onRemoveAudio: () -> Unit
+) {
+    Column(
+        Modifier.fillMaxWidth().height(157.dp).background(Color(0xFF202020))
+            .padding(horizontal = 8.dp, vertical = 5.dp)
+    ) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("0:00", color = Color.LightGray, fontSize = 9.sp)
+            Spacer(Modifier.width(35.dp))
+            Text("0:02", color = Color.Gray, fontSize = 9.sp)
+            Spacer(Modifier.width(35.dp))
+            Text("0:04", color = Color.Gray, fontSize = 9.sp)
+            Spacer(Modifier.width(35.dp))
+            Text("0:06", color = Color.Gray, fontSize = 9.sp)
+            Spacer(Modifier.weight(1f))
+            Text(clips.size.toString() + " clip(s)", color = Color.Gray, fontSize = 9.sp)
+        }
+        Spacer(Modifier.height(4.dp))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column(
+                Modifier.width(62.dp).height(65.dp).clickable { },
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Icon(Icons.Default.VolumeUp, null, tint = Color.LightGray, modifier = Modifier.size(23.dp))
+                Text("Clip audio", color = Color.LightGray, fontSize = 8.sp)
+            }
+            Box(Modifier.weight(1f).height(65.dp)) {
+                Row(
+                    Modifier.fillMaxSize().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    clips.forEachIndexed { index, clip ->
+                        Box(
+                            Modifier.width((clip.length / 1000f * 22f).coerceIn(82f, 190f).dp)
+                                .height(60.dp).clip(RoundedCornerShape(5.dp))
+                                .border(if (index == selectedIndex) 2.dp else 1.dp, if (index == selectedIndex) Color(0xFFFF4569) else Color(0xFF666666), RoundedCornerShape(5.dp))
+                                .clickable { onSelect(index) }
+                        ) {
+                            FrameThumbnail(clip.uri.toString(), Modifier.fillMaxSize())
+                            Box(Modifier.fillMaxSize().background(if (index == selectedIndex) Color.Transparent else Color.Black.copy(alpha = .12f)))
                         }
                     }
+                    Box(
+                        Modifier.width(48.dp).height(60.dp).clip(RoundedCornerShape(6.dp))
+                            .background(Color(0xFF343434)).clickable(onClick = onAddClip),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.Add, "Add clip", tint = Color(0xFFFF4569), modifier = Modifier.size(30.dp))
+                    }
                 }
-                Box(Modifier.width(54.dp).height(54.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF272A35)).clickable(onClick = import), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.Add, "Add clip", tint = AQUA)
-                }
+                Box(
+                    Modifier.align(Alignment.Center).fillMaxHeight().width(2.dp)
+                        .background(Color(0xFFFF315F))
+                )
             }
-            Spacer(Modifier.height(7.dp))
-            Row(Modifier.fillMaxWidth().height(28.dp).clip(RoundedCornerShape(7.dp)).background(Color(0xFF22252F)), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.MusicNote, null, tint = AQUA, modifier = Modifier.padding(horizontal = 8.dp).size(16.dp))
-                Text("AUDIO TRACK", color = Color.LightGray, fontSize = 10.sp)
-                Spacer(Modifier.weight(1f))
-                Text("Add music from Audio", color = Color.Gray, fontSize = 9.sp, modifier = Modifier.padding(end = 8.dp))
-            }
-            active?.let { c ->
-                Text("Trim  " + time(c.start) + " — " + time(c.end), color = PAPER, fontSize = 12.sp)
-                RangeSlider(a.coerceIn(0f, c.duration.toFloat())..b.coerceIn(0f, c.duration.toFloat()), { setRange(it.start, it.endInclusive) }, onValueChangeFinished = trim, valueRange = 0f..c.duration.toFloat().coerceAtLeast(1f))
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                Mini("Split", Icons.Default.ContentCut, split); Mini("Duplicate", Icons.Default.ContentCopy, duplicate); Mini("Delete", Icons.Default.Delete, delete)
-            }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                Mini("Left", Icons.Default.ArrowBack, { move(-1) }); Mini("Right", Icons.Default.ArrowForward, { move(1) })
-                Mini("Undo", Icons.Default.Undo, undo, canUndo); Mini("Redo", Icons.Default.Redo, redo, canRedo)
-            }
-            Text("Original files stay untouched. Export uses this clip order.", color = Color.LightGray, fontSize = 10.sp)
+        }
+        Spacer(Modifier.height(5.dp))
+        Row(
+            Modifier.fillMaxWidth().height(37.dp).clip(RoundedCornerShape(5.dp))
+                .background(Color(0xFF303030)).clickable(onClick = if (hasAudio) onRemoveAudio else onAddAudio)
+                .padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Default.MusicNote, null, tint = Color.LightGray, modifier = Modifier.size(17.dp))
+            Spacer(Modifier.width(7.dp))
+            Text(audioLabel, color = if (hasAudio) Color.White else Color.LightGray, fontSize = 11.sp)
+            Spacer(Modifier.weight(1f))
+            if (!hasAudio) Icon(Icons.Default.Add, "Add audio", tint = Color.White, modifier = Modifier.size(18.dp))
+            else Text("REMOVE", color = Color(0xFFFF879B), fontSize = 8.sp)
         }
     }
 }
+
 @Composable private fun FilterPanel(selected: String, choose: (String) -> Unit) {
     Column(Modifier.fillMaxWidth().background(CARD, RoundedCornerShape(15.dp)).padding(12.dp)) { Text("FILTERS & EFFECTS", color = AQUA, fontWeight = FontWeight.Bold); Chips(listOf("Original", "Cinema", "Vintage", "B&W", "Warm", "Cool", "Fade", "Vivid"), selected, choose); Text("Live preview and rendered export.", color = Color.LightGray, fontSize = 10.sp) }
 }
