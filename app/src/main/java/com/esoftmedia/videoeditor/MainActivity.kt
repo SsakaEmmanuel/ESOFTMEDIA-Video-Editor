@@ -4,6 +4,7 @@ package com.esoftmedia.videoeditor
 import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Matrix
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Typeface
@@ -88,7 +89,8 @@ data class ClipStyle(
     val flipV: Boolean = false,
     val speed: Float = 1f,
     val background: String = "Black",
-    val mosaic: Float = 0f
+    val mosaic: Float = 0f,
+    val animation: String = "None"
 )
 
 data class SavedProject(
@@ -155,6 +157,7 @@ fun VideoEditorApp() {
     var trimB by remember { mutableFloatStateOf(0f) }
     var clipStyles by remember { mutableStateOf<Map<String, ClipStyle>>(emptyMap()) }
     var committedStyle by remember { mutableStateOf(ClipStyle()) }
+    var editingStyle by remember { mutableStateOf(ClipStyle()) }
     var speed by remember { mutableFloatStateOf(1f) }
     var selectedTool by remember { mutableStateOf("Trim") }
     var showHome by remember { mutableStateOf(true) }
@@ -167,10 +170,10 @@ fun VideoEditorApp() {
 
     fun updateActiveStyle(transform: (ClipStyle) -> ClipStyle, applyPreview: Boolean = false) {
         val clip = active ?: return
-        val current = clipStyles[clip.id] ?: committedStyle
+        val current = editingStyle
         val transformed = transform(current)
         val updated = transformed.copy(speed = transformed.speed.coerceIn(0.25f, 4f))
-        clipStyles = clipStyles + (clip.id to updated)
+        editingStyle = updated
         filter = updated.filter
         brightness = updated.brightness
         contrast = updated.contrast
@@ -182,6 +185,7 @@ fun VideoEditorApp() {
         flipV = updated.flipV
         speed = updated.speed
         if (applyPreview) {
+            clipStyles = clipStyles + (clip.id to updated)
             committedStyle = updated
             player.setPlaybackParameters(PlaybackParameters(updated.speed))
         }
@@ -189,7 +193,8 @@ fun VideoEditorApp() {
 
     fun commitActiveStyle() {
         val clip = active ?: return
-        val style = clipStyles[clip.id] ?: committedStyle
+        val style = editingStyle
+        clipStyles = clipStyles + (clip.id to style)
         committedStyle = style
         player.setPlaybackParameters(PlaybackParameters(style.speed))
     }
@@ -284,6 +289,7 @@ fun VideoEditorApp() {
             flipV = style.flipV
             speed = style.speed
             committedStyle = style
+            editingStyle = style
             player.setPlaybackParameters(PlaybackParameters(style.speed))
         }
     }
@@ -331,7 +337,7 @@ fun VideoEditorApp() {
             effects(
                 style.filter, style.brightness, style.contrast, style.saturation, style.lightness,
                 style.aspect, style.rotation, style.flipH, style.flipV, "", resolutionHeight = 0,
-                mosaic = style.mosaic
+                mosaic = style.mosaic, animation = style.animation
             )
         }
         if (active?.id == clipId) {
@@ -365,6 +371,7 @@ fun VideoEditorApp() {
         clips.clear(); undo.clear(); redo.clear()
         clipStyles = emptyMap()
         committedStyle = ClipStyle()
+        editingStyle = ClipStyle()
         musicUri = null; musicDuration = 0L; caption = ""; filter = "Original"
         brightness = 0f; contrast = 0f; saturation = 0f; lightness = 0f
         aspect = "Original"; rotation = 0f; flipH = false; flipV = false; speed = 1f
@@ -397,6 +404,7 @@ fun VideoEditorApp() {
         speed = draft.clips.firstOrNull()?.let { clipStyles[it.id]?.speed } ?: 1f
         selectedTool = "Trim"
         committedStyle = draft.clips.firstOrNull()?.let { clipStyles[it.id] } ?: ClipStyle()
+        editingStyle = committedStyle
         favorite = draft.favorite
         musicUri = draft.musicUri?.let { Uri.parse(it) }
         musicDuration = musicUri?.let { durationMs(ctx, it) } ?: 0L
@@ -407,7 +415,7 @@ fun VideoEditorApp() {
 
     LaunchedEffect(
         clips.map { it.id + ":" + it.start + ":" + it.end },
-        clipStyles, caption, musicUri, filter, aspect, brightness, contrast, saturation, lightness, rotation, flipH, flipV, favorite
+        clipStyles, caption, musicUri, favorite
     ) {
         if (!showHome && clips.isNotEmpty()) {
             delay(650)
