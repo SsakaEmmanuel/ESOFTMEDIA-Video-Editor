@@ -1072,6 +1072,8 @@ private fun TimelinePanel(
     onAddAudio: () -> Unit,
     hasAudio: Boolean,
     audioLabel: String,
+    muted: Boolean,
+    onToggleMute: () -> Unit,
     onRemoveAudio: () -> Unit
 ) {
     Column(
