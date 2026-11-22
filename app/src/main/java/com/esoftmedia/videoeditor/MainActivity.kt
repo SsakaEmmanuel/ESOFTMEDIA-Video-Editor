@@ -167,7 +167,8 @@ fun VideoEditorApp() {
     fun updateActiveStyle(transform: (ClipStyle) -> ClipStyle, applyPreview: Boolean = false) {
         val clip = active ?: return
         val current = clipStyles[clip.id] ?: committedStyle
-        val updated = transform(current).copy(speed = transform(current).speed.coerceIn(0.25f, 4f))
+        val transformed = transform(current)
+        val updated = transformed.copy(speed = transformed.speed.coerceIn(0.25f, 4f))
         clipStyles = clipStyles + (clip.id to updated)
         filter = updated.filter
         brightness = updated.brightness
@@ -344,7 +345,7 @@ fun VideoEditorApp() {
         val saved = SavedProject(
             projectId, projectName, System.currentTimeMillis(), encode(clips), musicUri?.toString(),
             caption, filter, aspect, brightness, contrast, saturation, lightness, rotation,
-            flipH, flipV, favorite
+            flipH, flipV, favorite, encodeStyles(clipStyles)
         )
         val existing = drafts.indexOfFirst { it.id == projectId }
         if (existing >= 0) drafts[existing] = saved else drafts.add(0, saved)
@@ -362,9 +363,11 @@ fun VideoEditorApp() {
     fun resetForNewProject() {
         player.pause(); music.pause()
         clips.clear(); undo.clear(); redo.clear()
+        clipStyles = emptyMap()
+        committedStyle = ClipStyle()
         musicUri = null; musicDuration = 0L; caption = ""; filter = "Original"
         brightness = 0f; contrast = 0f; saturation = 0f; lightness = 0f
-        aspect = "Original"; rotation = 0f; flipH = false; flipV = false
+        aspect = "Original"; rotation = 0f; flipH = false; flipV = false; speed = 1f
         favorite = false; selectedIndex = 0; tab = "Edit"
         projectId = UUID.randomUUID().toString()
         projectName = "Project " + (drafts.size + 1)
@@ -376,11 +379,22 @@ fun VideoEditorApp() {
         clips.addAll(draft.clips)
         undo.clear(); redo.clear()
         selectedIndex = 0
+        clipStyles = decodeStyles(draft.stylesJson)
+        if (clipStyles.isEmpty()) {
+            val legacyStyle = ClipStyle(
+                filter = draft.filter, brightness = draft.brightness, contrast = draft.contrast,
+                saturation = draft.saturation, lightness = draft.lightness, aspect = draft.aspect,
+                rotation = draft.rotation, flipH = draft.flipH, flipV = draft.flipV
+            )
+            draft.clips.firstOrNull()?.let { clipStyles = mapOf(it.id to legacyStyle) }
+        }
         projectId = draft.id; projectName = draft.name
         caption = draft.caption; filter = draft.filter; aspect = draft.aspect
         brightness = draft.brightness; contrast = draft.contrast
         saturation = draft.saturation; lightness = draft.lightness
         rotation = draft.rotation; flipH = draft.flipH; flipV = draft.flipV
+        speed = draft.clips.firstOrNull()?.let { clipStyles[it.id]?.speed } ?: 1f
+        committedStyle = draft.clips.firstOrNull()?.let { clipStyles[it.id] } ?: ClipStyle()
         favorite = draft.favorite
         musicUri = draft.musicUri?.let { Uri.parse(it) }
         musicDuration = musicUri?.let { durationMs(ctx, it) } ?: 0L
@@ -391,7 +405,7 @@ fun VideoEditorApp() {
 
     LaunchedEffect(
         clips.map { it.id + ":" + it.start + ":" + it.end },
-        caption, musicUri, filter, aspect, brightness, contrast, saturation, lightness, rotation, flipH, flipV, favorite
+        clipStyles, caption, musicUri, filter, aspect, brightness, contrast, saturation, lightness, rotation, flipH, flipV, favorite
     ) {
         if (!showHome && clips.isNotEmpty()) {
             delay(650)
@@ -669,7 +683,7 @@ private fun encodeDrafts(drafts: List<SavedProject>): String {
             put("brightness", draft.brightness.toDouble()); put("contrast", draft.contrast.toDouble())
             put("saturation", draft.saturation.toDouble()); put("lightness", draft.lightness.toDouble())
             put("rotation", draft.rotation.toDouble()); put("flipH", draft.flipH); put("flipV", draft.flipV)
-            put("favorite", draft.favorite)
+            put("favorite", draft.favorite); put("styles", draft.stylesJson)
         })
     }
     return array.toString()
@@ -696,7 +710,8 @@ private fun decodeDrafts(raw: String?): List<SavedProject> = runCatching {
                 item.optDouble("rotation", 0.0).toFloat(),
                 item.optBoolean("flipH", false),
                 item.optBoolean("flipV", false),
-                item.optBoolean("favorite", false)
+                item.optBoolean("favorite", false),
+                item.optString("styles", "")
             )
         }
     }
@@ -976,6 +991,54 @@ private fun EditToolPanel(
         }
     }
 }
+
+private fun encodeStyles(styles: Map<String, ClipStyle>): String {
+    val root = JSONObject()
+    styles.forEach { (id, style) ->
+        root.put(id, JSONObject().apply {
+            put("filter", style.filter)
+            put("brightness", style.brightness.toDouble())
+            put("contrast", style.contrast.toDouble())
+            put("saturation", style.saturation.toDouble())
+            put("lightness", style.lightness.toDouble())
+            put("aspect", style.aspect)
+            put("rotation", style.rotation.toDouble())
+            put("flipH", style.flipH)
+            put("flipV", style.flipV)
+            put("speed", style.speed.toDouble())
+            put("background", style.background)
+            put("mosaic", style.mosaic.toDouble())
+        })
+    }
+    return root.toString()
+}
+
+private fun decodeStyles(raw: String): Map<String, ClipStyle> = runCatching {
+    if (raw.isBlank()) emptyMap() else {
+        val root = JSONObject(raw)
+        buildMap {
+            val keys = root.keys()
+            while (keys.hasNext()) {
+                val id = keys.next()
+                val item = root.optJSONObject(id) ?: continue
+                put(id, ClipStyle(
+                    filter = item.optString("filter", "Original"),
+                    brightness = item.optDouble("brightness", 0.0).toFloat().coerceIn(-100f, 100f),
+                    contrast = item.optDouble("contrast", 0.0).toFloat().coerceIn(-100f, 100f),
+                    saturation = item.optDouble("saturation", 0.0).toFloat().coerceIn(-100f, 100f),
+                    lightness = item.optDouble("lightness", 0.0).toFloat().coerceIn(-100f, 100f),
+                    aspect = item.optString("aspect", "Original"),
+                    rotation = item.optDouble("rotation", 0.0).toFloat(),
+                    flipH = item.optBoolean("flipH", false),
+                    flipV = item.optBoolean("flipV", false),
+                    speed = item.optDouble("speed", 1.0).toFloat().coerceIn(0.25f, 4f),
+                    background = item.optString("background", "Black"),
+                    mosaic = item.optDouble("mosaic", 0.0).toFloat().coerceIn(0f, 100f)
+                ))
+            }
+        }
+    }
+}.getOrDefault(emptyMap())
 
 private fun durationMs(ctx: Context, uri: Uri): Long {
     val r = MediaMetadataRetriever()
