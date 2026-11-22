@@ -554,9 +554,9 @@ fun VideoEditorApp() {
                                 }
                             }
                         )
-                        "Filters", "Effects" -> FilterPanel(filter) {
-                            updateActiveStyle({ it.copy(filter = it@FilterPanel) }, applyPreview = true)
-                            status = it + " filter active"
+                        "Filters", "Effects" -> FilterPanel(filter) { chosenFilter ->
+                            updateActiveStyle({ current -> current.copy(filter = chosenFilter) }, applyPreview = true)
+                            status = chosenFilter + " filter active"
                         }
                         "Adjust" -> AdjustPanel(
                             brightness, contrast, saturation, lightness,
@@ -925,57 +925,47 @@ private fun FrameThumbnail(uriText: String?, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun EditorTopBar(title: String, onClose: () -> Unit, onHelp: () -> Unit, onShare: () -> Unit, onSave: () -> Unit) {
+private fun EditorTopBar(title: String, onClose: () -> Unit, onHelp: () -> Unit, onExport: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().height(48.dp).background(Color(0xFF222222)).padding(horizontal = 5.dp),
+        Modifier.fillMaxWidth().height(48.dp).background(Color(0xFF222222)).padding(horizontal = 7.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconButton(onClick = onClose) { Icon(Icons.Default.Close, "Close editor", tint = PAPER, modifier = Modifier.size(27.dp)) }
         Text(title, color = PAPER, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-        IconButton(onClick = onHelp) { Icon(Icons.Default.HelpOutline, "Help", tint = PAPER, modifier = Modifier.size(24.dp)) }
-        IconButton(onClick = onShare) { Icon(Icons.Default.Share, "Share", tint = PAPER, modifier = Modifier.size(24.dp)) }
-        IconButton(onClick = onSave) { Icon(Icons.Default.Save, "Save draft", tint = PAPER, modifier = Modifier.size(23.dp)) }
+        IconButton(onClick = onHelp) { Icon(Icons.Default.HelpOutline, "Help", tint = PAPER, modifier = Modifier.size(25.dp)) }
+        IconButton(onClick = onExport) { Icon(Icons.Default.FileUpload, "Export video", tint = PAPER, modifier = Modifier.size(25.dp)) }
     }
 }
 
 @Composable
 private fun EditorTools(active: String, onTool: (String) -> Unit) {
     val tools = listOf(
+        "Filter" to Icons.Default.FilterVintage,
+        "Enhance" to Icons.Default.HighQuality,
+        "Captions" to Icons.Default.Subtitles,
+        "Speed" to Icons.Default.Speed,
+        "BG" to Icons.Default.Layers,
+        "Crop" to Icons.Default.Crop,
+        "Mosaic" to Icons.Default.BlurOn,
         "Trim" to Icons.Default.ContentCut,
         "Music" to Icons.Default.MusicNote,
         "Text" to Icons.Default.TextFields,
         "Sticker" to Icons.Default.EmojiEmotions,
         "Effect" to Icons.Default.AutoAwesome,
-        "Filter" to Icons.Default.FilterVintage,
-        "Enhance" to Icons.Default.HighQuality,
-        "Captions" to Icons.Default.Subtitles,
-        "Crop" to Icons.Default.Crop,
         "Volume" to Icons.Default.VolumeUp,
         "Rotate" to Icons.Default.RotateRight,
-        "Flip" to Icons.Default.Flip,
-        "Export" to Icons.Default.Save
+        "Flip" to Icons.Default.Flip
     )
     Row(
         Modifier.fillMaxWidth().height(74.dp).background(Color(0xFF222222))
             .horizontalScroll(rememberScrollState()).padding(horizontal = 5.dp, vertical = 5.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         tools.forEach { (name, icon) ->
-            val selected = when (name) {
-                "Trim" -> active == "Edit"
-                "Music", "Volume" -> active == "Audio"
-                "Text", "Captions" -> active == "Text"
-                "Sticker" -> active == "Elements"
-                "Effect" -> active == "Effects"
-                "Filter" -> active == "Filters"
-                "Enhance" -> active == "Adjust"
-                "Crop", "Rotate", "Flip" -> active == "Crop"
-                "Export" -> active == "Export"
-                else -> false
-            }
+            val selected = name == active
             Column(
-                Modifier.width(57.dp).clip(RoundedCornerShape(8.dp))
+                Modifier.width(58.dp).clip(RoundedCornerShape(8.dp))
                     .background(if (selected) Color(0xFF343434) else Color.Transparent)
                     .clickable { onTool(name) }.padding(vertical = 5.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
@@ -1334,11 +1324,43 @@ private fun TimelinePanel(
 @Composable private fun FilterPanel(selected: String, choose: (String) -> Unit) {
     Column(Modifier.fillMaxWidth().background(CARD, RoundedCornerShape(15.dp)).padding(12.dp)) { Text("FILTERS & EFFECTS", color = AQUA, fontWeight = FontWeight.Bold); Chips(listOf("Original", "Cinema", "Vintage", "B&W", "Warm", "Cool", "Fade", "Vivid"), selected, choose); Text("Live preview and rendered export.", color = Color.LightGray, fontSize = 10.sp) }
 }
-@Composable private fun AdjustPanel(b: Float, c: Float, s: Float, l: Float, ob: (Float) -> Unit, oc: (Float) -> Unit, os: (Float) -> Unit, ol: (Float) -> Unit) {
-    Column(Modifier.fillMaxWidth().background(CARD, RoundedCornerShape(15.dp)).padding(12.dp)) { Text("ADJUST", color = AQUA, fontWeight = FontWeight.Bold); Adjust("Brightness", b, ob); Adjust("Contrast", c, oc); Adjust("Saturation", s, os); Adjust("Lightness", l, ol) }
+@Composable
+private fun AdjustPanel(
+    b: Float, c: Float, s: Float, l: Float,
+    onBrightness: (Float) -> Unit, onContrast: (Float) -> Unit,
+    onSaturation: (Float) -> Unit, onLightness: (Float) -> Unit,
+    onCommit: () -> Unit
+) {
+    Column(
+        Modifier.fillMaxWidth().background(Color(0xFF171A23), RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp))
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+    ) {
+        Text("ADJUST", color = AQUA, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        Adjust("Brightness", b, onBrightness, onCommit)
+        Adjust("Contrast", c, onContrast, onCommit)
+        Adjust("Saturation", s, onSaturation, onCommit)
+        Adjust("Lightness", l, onLightness, onCommit)
+        Text("Preview updates when you release a slider to keep playback smooth.", color = Color.LightGray, fontSize = 9.sp)
+    }
 }
-@Composable private fun Adjust(label: String, value: Float, onChange: (Float) -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) { Text(label, color = PAPER, fontSize = 11.sp, modifier = Modifier.width(82.dp)); Slider(value, onChange, valueRange = -100f..100f, modifier = Modifier.weight(1f)); Text(value.toInt().toString(), color = AQUA, fontSize = 10.sp) }
+@Composable
+private fun Adjust(
+    label: String,
+    value: Float,
+    onChange: (Float) -> Unit,
+    onFinished: () -> Unit = {}
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(label, color = PAPER, fontSize = 11.sp, modifier = Modifier.width(82.dp))
+        Slider(
+            value = value.coerceIn(-100f, 100f),
+            onValueChange = onChange,
+            onValueChangeFinished = onFinished,
+            valueRange = -100f..100f,
+            modifier = Modifier.weight(1f).height(32.dp)
+        )
+        Text(value.toInt().toString(), color = AQUA, fontSize = 10.sp, modifier = Modifier.width(28.dp))
+    }
 }
 @Composable private fun CropPanel(aspect: String, flipH: Boolean, flipV: Boolean, oa: (String) -> Unit, rotate: () -> Unit, fh: () -> Unit, fv: () -> Unit, reset: () -> Unit) {
     Column(Modifier.fillMaxWidth().background(CARD, RoundedCornerShape(15.dp)).padding(12.dp)) {
