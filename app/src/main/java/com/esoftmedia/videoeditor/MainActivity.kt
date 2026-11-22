@@ -223,7 +223,8 @@ fun VideoEditorApp() {
     }
     LaunchedEffect(Unit) {
         while (true) {
-            position = player.currentPosition.coerceAtLeast(0L)
+            val currentIndex = player.currentMediaItemIndex.coerceIn(0, clips.size)
+            position = clips.take(currentIndex).sumOf { it.length } + player.currentPosition.coerceAtLeast(0L)
             selectedIndex = player.currentMediaItemIndex.coerceIn(0, (clips.size - 1).coerceAtLeast(0))
             playing = player.isPlaying
             music.volume = musicVolume
@@ -553,6 +554,50 @@ fun VideoEditorApp() {
             text = { Text("Import clips, select a clip on the timeline, trim or split it, add music and text, apply visual adjustments, then export an MP4. Drafts are saved locally on this phone.") },
             confirmButton = { TextButton(onClick = { helpDialog = false }) { Text("Got it") } })
     }
+}
+
+private fun encodeDrafts(drafts: List<SavedProject>): String {
+    val array = JSONArray()
+    drafts.forEach { draft ->
+        array.put(JSONObject().apply {
+            put("id", draft.id); put("name", draft.name); put("updatedAt", draft.updatedAt)
+            put("clips", draft.clipsJson); put("musicUri", draft.musicUri ?: JSONObject.NULL)
+            put("caption", draft.caption); put("filter", draft.filter); put("aspect", draft.aspect)
+            put("brightness", draft.brightness.toDouble()); put("contrast", draft.contrast.toDouble())
+            put("saturation", draft.saturation.toDouble()); put("lightness", draft.lightness.toDouble())
+            put("rotation", draft.rotation.toDouble()); put("flipH", draft.flipH); put("flipV", draft.flipV)
+            put("favorite", draft.favorite)
+        })
+    }
+    return array.toString()
+}
+private fun decodeDrafts(raw: String?): List<SavedProject> = runCatching {
+    if (raw.isNullOrBlank()) emptyList() else {
+        val array = JSONArray(raw)
+        (0 until array.length()).mapNotNull { index ->
+            val item = array.getJSONObject(index)
+            val clipJson = item.optString("clips", "[]")
+            if (decode(clipJson).isEmpty()) null else SavedProject(
+                item.optString("id", UUID.randomUUID().toString()),
+                item.optString("name", "Untitled Project"),
+                item.optLong("updatedAt", System.currentTimeMillis()),
+                clipJson,
+                item.optString("musicUri").takeIf { it.isNotBlank() && it != "null" },
+                item.optString("caption"),
+                item.optString("filter", "Original"),
+                item.optString("aspect", "Original"),
+                item.optDouble("brightness", 0.0).toFloat(),
+                item.optDouble("contrast", 0.0).toFloat(),
+                item.optDouble("saturation", 0.0).toFloat(),
+                item.optDouble("lightness", 0.0).toFloat(),
+                item.optDouble("rotation", 0.0).toFloat(),
+                item.optBoolean("flipH", false),
+                item.optBoolean("flipV", false),
+                item.optBoolean("favorite", false)
+            )
+        }
+    }
+}.getOrDefault(emptyList())
 
 private fun durationMs(ctx: Context, uri: Uri): Long {
     val r = MediaMetadataRetriever()
