@@ -599,6 +599,263 @@ private fun decodeDrafts(raw: String?): List<SavedProject> = runCatching {
     }
 }.getOrDefault(emptyList())
 
+@Composable
+private fun HomeScreen(
+    drafts: List<SavedProject>,
+    onNewProject: () -> Unit,
+    onOpenDraft: (SavedProject) -> Unit,
+    onDeleteDraft: (SavedProject) -> Unit,
+    onQuickTool: (String) -> Unit
+) {
+    Column(
+        Modifier.fillMaxSize().background(Color(0xFF171717))
+            .verticalScroll(rememberScrollState()).padding(horizontal = 18.dp)
+    ) {
+        Spacer(Modifier.height(24.dp))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Column {
+                Text("ESOFTMEDIA", color = PAPER, fontSize = 25.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.2.sp)
+                Text("VIDEO STUDIO", color = Color(0xFFFF8A72), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+            }
+            Spacer(Modifier.weight(1f))
+            IconButton(onClick = { onQuickTool("Export") }) { Icon(Icons.Default.WorkspacePremium, "Premium tools", tint = Color(0xFFFFB36E), modifier = Modifier.size(27.dp)) }
+            IconButton(onClick = { }) { Icon(Icons.Default.Settings, "Settings", tint = Color.LightGray, modifier = Modifier.size(26.dp)) }
+        }
+        Spacer(Modifier.height(24.dp))
+        Box(
+            Modifier.fillMaxWidth().height(138.dp)
+                .clip(RoundedCornerShape(17.dp))
+                .background(Brush.horizontalGradient(listOf(Color(0xFFFFC46E), Color(0xFFFF7E65), Color(0xFFF53F68))))
+                .clickable(onClick = onNewProject),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(Icons.Default.AddCircle, null, tint = Color.White, modifier = Modifier.size(43.dp))
+                Spacer(Modifier.height(7.dp))
+                Text("New Project", color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+        Spacer(Modifier.height(18.dp))
+        val tools = listOf(
+            Triple("Enhance", Icons.Default.HighQuality, "Adjust"),
+            Triple("Captions", Icons.Default.Subtitles, "Text"),
+            Triple("Filters", Icons.Default.FilterVintage, "Filters"),
+            Triple("Trim", Icons.Default.ContentCut, "Edit"),
+            Triple("Music", Icons.Default.MusicNote, "Audio"),
+            Triple("Crop", Icons.Default.Crop, "Crop")
+        )
+        tools.chunked(3).forEach { rowTools ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                rowTools.forEach { item ->
+                    Column(
+                        Modifier.weight(1f).height(82.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFF282828))
+                            .clickable { onQuickTool(item.third) }
+                            .padding(9.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(item.second, null, tint = Color.White, modifier = Modifier.size(30.dp))
+                        Spacer(Modifier.height(5.dp))
+                        Text(item.first, color = Color.LightGray, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                    }
+                }
+            }
+            Spacer(Modifier.height(9.dp))
+        }
+        Spacer(Modifier.height(12.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Drafts", color = PAPER, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.width(5.dp))
+            Icon(Icons.Default.Info, null, tint = Color.Gray, modifier = Modifier.size(15.dp))
+            Spacer(Modifier.weight(1f))
+            Icon(Icons.Default.ViewModule, null, tint = Color.LightGray)
+        }
+        Spacer(Modifier.height(14.dp))
+        if (drafts.isEmpty()) {
+            Column(
+                Modifier.fillMaxWidth().padding(vertical = 32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(Icons.Default.VideoLibrary, null, tint = Color.Gray, modifier = Modifier.size(42.dp))
+                Spacer(Modifier.height(8.dp))
+                Text("Your projects will appear here", color = Color.LightGray, fontSize = 13.sp)
+                Text("Create a new project to get started", color = Color.Gray, fontSize = 11.sp)
+            }
+        } else {
+            drafts.chunked(3).forEach { rowDrafts ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    rowDrafts.forEach { draft ->
+                        DraftCard(
+                            draft = draft,
+                            modifier = Modifier.weight(1f),
+                            onOpen = { onOpenDraft(draft) },
+                            onDelete = { onDeleteDraft(draft) }
+                        )
+                    }
+                    repeat((3 - rowDrafts.size).coerceAtLeast(0)) { Spacer(Modifier.weight(1f)) }
+                }
+                Spacer(Modifier.height(10.dp))
+            }
+        }
+        Spacer(Modifier.height(34.dp))
+        Text("Projects stay on your phone", color = Color.Gray, fontSize = 12.sp, modifier = Modifier.align(Alignment.CenterHorizontally))
+        Spacer(Modifier.height(18.dp))
+    }
+}
+
+@Composable
+private fun DraftCard(draft: SavedProject, modifier: Modifier, onOpen: () -> Unit, onDelete: () -> Unit) {
+    var menuOpen by remember { mutableStateOf(false) }
+    Box(
+        modifier.height(150.dp).clip(RoundedCornerShape(9.dp))
+            .background(Color(0xFF2A2A2A)).clickable(onClick = onOpen)
+    ) {
+        FrameThumbnail(draft.previewUri, Modifier.fillMaxSize())
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = .78f)))))
+        Column(Modifier.align(Alignment.BottomStart).padding(start = 8.dp, bottom = 8.dp, end = 6.dp)) {
+            Text(draft.name, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(time(draft.durationMs), color = Color.White, fontSize = 10.sp)
+        }
+        IconButton(onClick = { menuOpen = true }, modifier = Modifier.align(Alignment.BottomEnd).size(31.dp)) {
+            Icon(Icons.Default.MoreHoriz, "Draft options", tint = Color.White, modifier = Modifier.size(21.dp))
+        }
+        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+            DropdownMenuItem(text = { Text("Open project") }, onClick = { menuOpen = false; onOpen() })
+            DropdownMenuItem(text = { Text("Delete draft") }, onClick = { menuOpen = false; onDelete() })
+        }
+    }
+}
+
+@Composable
+private fun FrameThumbnail(uriText: String?, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val bitmap by produceState<Bitmap?>(initialValue = null, key1 = uriText) {
+        value = withContext(Dispatchers.IO) {
+            if (uriText.isNullOrBlank()) null else runCatching {
+                val retriever = MediaMetadataRetriever()
+                try {
+                    retriever.setDataSource(context, Uri.parse(uriText))
+                    retriever.getFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                } finally {
+                    retriever.release()
+                }
+            }.getOrNull()
+        }
+    }
+    if (bitmap != null) {
+        Image(bitmap!!.asImageBitmap(), contentDescription = "Video thumbnail", modifier = modifier, contentScale = ContentScale.Crop)
+    } else {
+        Box(modifier.background(Brush.linearGradient(listOf(Color(0xFF313846), Color(0xFF20242C)))), contentAlignment = Alignment.Center) {
+            Icon(Icons.Default.Movie, null, tint = Color(0xFF9BA3B4), modifier = Modifier.size(26.dp))
+        }
+    }
+}
+
+@Composable
+private fun EditorTopBar(title: String, onClose: () -> Unit, onHelp: () -> Unit, onShare: () -> Unit, onSave: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().height(48.dp).background(Color(0xFF222222)).padding(horizontal = 5.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconButton(onClick = onClose) { Icon(Icons.Default.Close, "Close editor", tint = PAPER, modifier = Modifier.size(27.dp)) }
+        Text(title, color = PAPER, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        IconButton(onClick = onHelp) { Icon(Icons.Default.HelpOutline, "Help", tint = PAPER, modifier = Modifier.size(24.dp)) }
+        IconButton(onClick = onShare) { Icon(Icons.Default.Share, "Share", tint = PAPER, modifier = Modifier.size(24.dp)) }
+        IconButton(onClick = onSave) { Icon(Icons.Default.Save, "Save draft", tint = PAPER, modifier = Modifier.size(23.dp)) }
+    }
+}
+
+@Composable
+private fun EditorTools(active: String, onTool: (String) -> Unit) {
+    val tools = listOf(
+        "Trim" to Icons.Default.ContentCut,
+        "Music" to Icons.Default.MusicNote,
+        "Text" to Icons.Default.TextFields,
+        "Sticker" to Icons.Default.EmojiEmotions,
+        "Effect" to Icons.Default.AutoAwesome,
+        "Filter" to Icons.Default.FilterVintage,
+        "Enhance" to Icons.Default.HighQuality,
+        "Captions" to Icons.Default.Subtitles,
+        "Crop" to Icons.Default.Crop,
+        "Volume" to Icons.Default.VolumeUp,
+        "Rotate" to Icons.Default.RotateRight,
+        "Flip" to Icons.Default.Flip,
+        "Export" to Icons.Default.Save
+    )
+    Row(
+        Modifier.fillMaxWidth().height(74.dp).background(Color(0xFF222222))
+            .horizontalScroll(rememberScrollState()).padding(horizontal = 5.dp, vertical = 5.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        tools.forEach { (name, icon) ->
+            val selected = when (name) {
+                "Trim" -> active == "Edit"
+                "Music", "Volume" -> active == "Audio"
+                "Text", "Captions" -> active == "Text"
+                "Sticker" -> active == "Elements"
+                "Effect" -> active == "Effects"
+                "Filter" -> active == "Filters"
+                "Enhance" -> active == "Adjust"
+                "Crop", "Rotate", "Flip" -> active == "Crop"
+                "Export" -> active == "Export"
+                else -> false
+            }
+            Column(
+                Modifier.width(57.dp).clip(RoundedCornerShape(8.dp))
+                    .background(if (selected) Color(0xFF343434) else Color.Transparent)
+                    .clickable { onTool(name) }.padding(vertical = 5.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(icon, null, tint = if (selected) Color.White else Color(0xFFCDCDCD), modifier = Modifier.size(25.dp))
+                Spacer(Modifier.height(3.dp))
+                Text(name.uppercase(), color = if (selected) Color.White else Color(0xFFBDBDBD), fontSize = 8.sp, maxLines = 1)
+            }
+        }
+    }
+}
+
+@Composable
+private fun EditToolPanel(
+    clip: VideoClip?,
+    start: Float,
+    end: Float,
+    setStart: (Float) -> Unit,
+    setEnd: (Float) -> Unit,
+    trim: () -> Unit,
+    split: () -> Unit,
+    duplicate: () -> Unit,
+    delete: () -> Unit
+) {
+    Column(
+        Modifier.fillMaxWidth().heightIn(max = 145.dp)
+            .background(Color(0xFF292929)).padding(horizontal = 11.dp, vertical = 6.dp)
+    ) {
+        if (clip == null) {
+            Text("Import a clip to start trimming", color = Color.LightGray, fontSize = 11.sp)
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("TRIM", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.weight(1f))
+                Text(time(start.toLong()) + " — " + time(end.toLong()), color = Color.LightGray, fontSize = 10.sp)
+            }
+            RangeSlider(
+                value = start.coerceIn(0f, clip.duration.toFloat())..end.coerceIn(0f, clip.duration.toFloat()),
+                onValueChange = { setStart(it.start); setEnd(it.endInclusive) },
+                onValueChangeFinished = trim,
+                valueRange = 0f..clip.duration.toFloat().coerceAtLeast(1f)
+            )
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                Mini("Split", Icons.Default.ContentCut, split)
+                Mini("Duplicate", Icons.Default.ContentCopy, duplicate)
+                Mini("Delete", Icons.Default.Delete, delete)
+            }
+        }
+    }
+}
+
 private fun durationMs(ctx: Context, uri: Uri): Long {
     val r = MediaMetadataRetriever()
     return try { r.setDataSource(ctx, uri); r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L }
