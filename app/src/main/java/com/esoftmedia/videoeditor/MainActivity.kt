@@ -371,6 +371,7 @@ fun VideoEditorApp() {
         favorite = false; selectedIndex = 0; tab = "Edit"
         projectId = UUID.randomUUID().toString()
         projectName = "Project " + (drafts.size + 1)
+        selectedTool = "Trim"
     }
 
     fun openDraft(draft: SavedProject) {
@@ -394,6 +395,7 @@ fun VideoEditorApp() {
         saturation = draft.saturation; lightness = draft.lightness
         rotation = draft.rotation; flipH = draft.flipH; flipV = draft.flipV
         speed = draft.clips.firstOrNull()?.let { clipStyles[it.id]?.speed } ?: 1f
+        selectedTool = "Trim"
         committedStyle = draft.clips.firstOrNull()?.let { clipStyles[it.id] } ?: ClipStyle()
         favorite = draft.favorite
         musicUri = draft.musicUri?.let { Uri.parse(it) }
@@ -582,7 +584,7 @@ fun VideoEditorApp() {
                             updateActiveStyle({ it.copy(background = value) }, applyPreview = true)
                             status = "Preview background set to " + value
                         }
-                        "Mosaic" -> MosaicPanel(committedStyle.mosaic,
+                        "Mosaic" -> MosaicPanel(clipStyles[active?.id]?.mosaic ?: committedStyle.mosaic,
                             { value -> updateActiveStyle { it.copy(mosaic = value) } },
                             { commitActiveStyle(); status = if (committedStyle.mosaic > 0f) "Full-clip blur applied" else "Blur removed" }
                         )
@@ -612,7 +614,7 @@ fun VideoEditorApp() {
                                     )
                                     EditedMediaItem.Builder(media).setEffects(
                                         Effects(emptyList(), clipEffects)
-                                    ).setFrameRate(fps).setRemoveAudio(muteOriginal).build()
+                                    ).setFrameRate(fps).setRemoveAudio(muteOriginal || style.speed != 1f).build()
                                 }
                                 val sequences = mutableListOf(EditedMediaItemSequence.Builder(items).build())
                                 if (musicUri != null && musicDuration > 0L) {
