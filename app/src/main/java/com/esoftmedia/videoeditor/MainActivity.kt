@@ -18,6 +18,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -37,6 +38,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -56,6 +59,8 @@ import org.json.JSONObject
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 private val BG = Color(0xFF090A0F)
 private val CARD = Color(0xFF151720)
@@ -65,6 +70,28 @@ private val PAPER = Color(0xFFF7F7FA)
 
 data class VideoClip(val id: String, val uri: Uri, val duration: Long, val start: Long = 0L, val end: Long = duration) {
     val length: Long get() = (end - start).coerceAtLeast(0L)
+}
+data class SavedProject(
+    val id: String,
+    val name: String,
+    val updatedAt: Long,
+    val clipsJson: String,
+    val musicUri: String?,
+    val caption: String,
+    val filter: String,
+    val aspect: String,
+    val brightness: Float,
+    val contrast: Float,
+    val saturation: Float,
+    val lightness: Float,
+    val rotation: Float,
+    val flipH: Boolean,
+    val flipV: Boolean,
+    val favorite: Boolean
+) {
+    val clips: List<VideoClip> get() = decode(clipsJson)
+    val durationMs: Long get() = clips.sumOf { it.length }
+    val previewUri: String? get() = clips.firstOrNull()?.uri?.toString()
 }
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); setContent { VideoEditorApp() } }
