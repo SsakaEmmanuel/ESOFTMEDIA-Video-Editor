@@ -287,49 +287,162 @@ fun VideoEditorApp() {
         tab = "Edit"; showHome = false
     }
 
+    LaunchedEffect(
+        clips.map { it.id + ":" + it.start + ":" + it.end },
+        caption, musicUri, filter, aspect, brightness, contrast, saturation, lightness, rotation, flipH, flipV, favorite
+    ) {
+        if (!showHome && clips.isNotEmpty()) {
+            delay(650)
+            saveProject(false)
+        }
+    }
+
+    androidx.activity.compose.BackHandler(enabled = !showHome) {
+        saveProject(false)
+        player.pause()
+        music.pause()
+        showHome = true
+    }
+
     MaterialTheme(colorScheme = darkColorScheme(background = BG, surface = CARD, primary = AQUA, secondary = VIOLET, onSurface = PAPER)) {
-        Surface(Modifier.fillMaxSize(), color = BG) {
-            Column(Modifier.fillMaxSize()) {
-                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp)) {
-                    Spacer(Modifier.height(7.dp))
-                    Header(::saveProject)
-                    Spacer(Modifier.height(8.dp))
-                    Preview(player, clips.isNotEmpty(), caption) { chooseVideos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) }
+        if (showHome) {
+            HomeScreen(
+                drafts = drafts,
+                onNewProject = {
+                    resetForNewProject()
+                    pendingNewProject = true
+                    chooseVideos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
+                },
+                onOpenDraft = { openDraft(it) },
+                onDeleteDraft = { draftToDelete ->
+                    drafts.removeAll { it.id == draftToDelete.id }
+                    ctx.getSharedPreferences("esoftmedia_editor", Context.MODE_PRIVATE).edit()
+                        .putString("saved_drafts", encodeDrafts(drafts)).apply()
+                },
+                onQuickTool = { target ->
+                    val latest = drafts.firstOrNull()
+                    if (latest == null) {
+                        resetForNewProject()
+                        pendingNewProject = true
+                        chooseVideos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
+                    } else {
+                        openDraft(latest)
+                        tab = target
+                    }
+                }
+            )
+        } else {
+            Surface(Modifier.fillMaxSize(), color = BG) {
+                Column(Modifier.fillMaxSize()) {
+                    EditorTopBar(
+                        title = projectName,
+                        onClose = {
+                            saveProject(false)
+                            player.pause()
+                            music.pause()
+                            showHome = true
+                        },
+                        onHelp = { helpDialog = true },
+                        onShare = {
+                            val shareUri = active?.uri
+                            if (shareUri != null) {
+                                val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                    type = "video/*"
+                                    putExtra(android.content.Intent.EXTRA_STREAM, shareUri)
+                                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                runCatching { ctx.startActivity(android.content.Intent.createChooser(intent, "Share video")) }
+                                    .onFailure { Toast.makeText(ctx, "Unable to open sharing options.", Toast.LENGTH_SHORT).show() }
+                            } else Toast.makeText(ctx, "Import a video before sharing.", Toast.LENGTH_SHORT).show()
+                        },
+                        onSave = { saveProject(true) }
+                    )
+                    Preview(player, clips.isNotEmpty(), caption, Modifier.weight(1f).fillMaxWidth()) {
+                        chooseVideos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
+                    }
                     PlaybackBar(
-                        playing, position, clips.sumOf { it.length },
+                        playing,
+                        position,
+                        clips.sumOf { it.length },
                         { if (clips.isNotEmpty()) { if (player.isPlaying) { player.pause(); music.pause() } else { player.play(); musicUri?.let { music.play() } } } },
                         { player.pause(); player.seekTo(0L); music.pause(); music.seekTo(0L) },
                         { if (clips.isNotEmpty()) player.seekTo((player.currentMediaItemIndex - 1).coerceAtLeast(0), 0L) },
                         { if (clips.isNotEmpty()) player.seekTo((player.currentMediaItemIndex + 1).coerceAtMost(clips.lastIndex), 0L) },
-                        { player.seekTo(it.toLong()) }
+                        { targetPosition ->
+                            var remaining = targetPosition.toLong().coerceAtLeast(0L)
+                            val targetIndex = clips.indexOfFirst { clip ->
+                                if (remaining <= clip.length) true else { remaining -= clip.length; false }
+                            }
+                            if (targetIndex >= 0) player.seekTo(targetIndex, remaining)
+                        },
+                        undo.isNotEmpty(),
+                        redo.isNotEmpty(),
+                        {
+                            if (undo.isNotEmpty()) {
+                                redo.add(clips.toList())
+                                val previous = undo.removeAt(undo.lastIndex)
+                                clips.clear(); clips.addAll(previous)
+                                selectedIndex = selectedIndex.coerceIn(0, (clips.size - 1).coerceAtLeast(0))
+                            }
+                        },
+                        {
+                            if (redo.isNotEmpty()) {
+                                undo.add(clips.toList())
+                                val next = redo.removeAt(redo.lastIndex)
+                                clips.clear(); clips.addAll(next)
+                                selectedIndex = selectedIndex.coerceIn(0, (clips.size - 1).coerceAtLeast(0))
+                            }
+                        }
                     )
-                    Spacer(Modifier.height(8.dp))
-                    Text("TIMELINE", color = PAPER, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     TimelinePanel(
-                        clips, selectedIndex, active, trimA, trimB,
-                        { i -> selectedIndex = i; player.seekTo(i, 0L) },
-                        { a, b -> trimA = a; trimB = b },
-                        { active?.let { c -> val a=trimA.toLong().coerceIn(0L,c.duration-1L); val b=trimB.toLong().coerceIn(a+1L,c.duration); changeClip(clips,selectedIndex,c.copy(start=a,end=b),undo,redo) } },
-                        { active?.let { c -> val split=(c.start+player.currentPosition).coerceIn(c.start+1L,c.end-1L); if(split in (c.start+1L) until c.end){ pushUndo(clips,undo,redo); clips[selectedIndex]=c.copy(end=split); clips.add(selectedIndex+1,c.copy(id=UUID.randomUUID().toString(),start=split)); status="Clip split" } else Toast.makeText(ctx,"Move playhead inside clip to split.",Toast.LENGTH_SHORT).show() } },
-                        { active?.let { pushUndo(clips,undo,redo); clips.add(selectedIndex+1,it.copy(id=UUID.randomUUID().toString())); status="Duplicated" } },
-                        { if(active!=null){ pushUndo(clips,undo,redo); clips.removeAt(selectedIndex); selectedIndex=(selectedIndex-1).coerceAtLeast(0); status="Deleted" } },
-                        { direction -> val target=selectedIndex+direction; if(target in clips.indices){pushUndo(clips,undo,redo);val cc=clips.removeAt(selectedIndex);clips.add(target,cc);selectedIndex=target} },
-                        { if(undo.isNotEmpty()){redo.add(clips.toList());val old=undo.removeAt(undo.lastIndex);clips.clear();clips.addAll(old);selectedIndex=selectedIndex.coerceIn(0,(clips.size-1).coerceAtLeast(0))} },
-                        { if(redo.isNotEmpty()){undo.add(clips.toList());val newer=redo.removeAt(redo.lastIndex);clips.clear();clips.addAll(newer);selectedIndex=selectedIndex.coerceIn(0,(clips.size-1).coerceAtLeast(0))} },
-                        undo.isNotEmpty(),redo.isNotEmpty(),
-                        { chooseVideos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) }
+                        clips = clips,
+                        selectedIndex = selectedIndex,
+                        onSelect = { index ->
+                            selectedIndex = index
+                            player.seekTo(index, 0L)
+                        },
+                        onAddClip = { chooseVideos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) },
+                        onAddAudio = { chooseAudio.launch(arrayOf("audio/*")) },
+                        hasAudio = musicUri != null,
+                        audioLabel = if (musicUri == null) "Add audio" else "Music track added",
+                        onRemoveAudio = { musicUri = null; musicDuration = 0L; music.stop(); status = "Music removed" }
                     )
-                    Spacer(Modifier.height(9.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-                        Quick("Trim", Icons.Default.ContentCut, Modifier.weight(1f)) { tab = "Edit" }
-                        Quick("Music", Icons.Default.MusicNote, Modifier.weight(1f)) { tab = "Audio" }
-                        Quick("Text", Icons.Default.TextFields, Modifier.weight(1f)) { tab = "Text" }
-                        Quick("Effects", Icons.Default.Tune, Modifier.weight(1f)) { tab = "Effects" }
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    Nav(tab) { tab = it }
-                    Spacer(Modifier.height(8.dp))
                     when (tab) {
+                        "Edit" -> EditToolPanel(
+                            active, trimA, trimB,
+                            { trimA = it; trimB = trimB.coerceAtLeast(it + 1f) },
+                            { trimB = it; trimA = trimA.coerceAtMost(it - 1f) },
+                            {
+                                active?.let { clip ->
+                                    val start = trimA.toLong().coerceIn(0L, clip.duration - 1L)
+                                    val end = trimB.toLong().coerceIn(start + 1L, clip.duration)
+                                    changeClip(clips, selectedIndex, clip.copy(start = start, end = end), undo, redo)
+                                    status = "Trim applied"
+                                }
+                            },
+                            {
+                                active?.let { clip ->
+                                    val split = (clip.start + player.currentPosition).coerceIn(clip.start + 1L, clip.end - 1L)
+                                    if (split in (clip.start + 1L) until clip.end) {
+                                        pushUndo(clips, undo, redo)
+                                        clips[selectedIndex] = clip.copy(end = split)
+                                        clips.add(selectedIndex + 1, clip.copy(id = UUID.randomUUID().toString(), start = split))
+                                        status = "Clip split"
+                                    } else Toast.makeText(ctx, "Move playhead inside the selected clip to split.", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            {
+                                active?.let { pushUndo(clips, undo, redo); clips.add(selectedIndex + 1, it.copy(id = UUID.randomUUID().toString())); status = "Clip duplicated" }
+                            },
+                            {
+                                if (active != null) {
+                                    pushUndo(clips, undo, redo)
+                                    clips.removeAt(selectedIndex)
+                                    selectedIndex = (selectedIndex - 1).coerceAtLeast(0)
+                                    status = "Clip deleted"
+                                }
+                            }
+                        )
                         "Filters", "Effects" -> FilterPanel(filter) { filter = it; status = it + " filter active" }
                         "Adjust" -> AdjustPanel(brightness, contrast, saturation, lightness, { brightness = it }, { contrast = it }, { saturation = it }, { lightness = it })
                         "Crop" -> CropPanel(aspect, flipH, flipV, { aspect = it }, { rotation = (rotation + 90f) % 360f }, { flipH = !flipH }, { flipV = !flipV }, { aspect = "Original"; rotation = 0f; flipH = false; flipV = false })
@@ -341,31 +454,31 @@ fun VideoEditorApp() {
                             { musicUri = null; musicDuration = 0L; music.stop(); status = "Music removed" }
                         )
                         "Text" -> TextPanel(caption, { draft = caption; textDialog = true }, { caption = ""; status = "Text removed" })
-                        "Elements" -> ElementsPanel { caption = (caption + " " + it).trim(); status = "Sticker added to overlay" }
+                        "Elements" -> ElementsPanel { caption = (caption + " " + it).trim(); status = "Sticker added to text overlay" }
                         "Export" -> ExportPanel(resolution, fps, status, exporting, { resolution = it }, { fps = it }, {
                             if (clips.isEmpty()) Toast.makeText(ctx, "Import a video first.", Toast.LENGTH_SHORT).show()
                             else if (!exporting) {
-                                saveProject()
+                                saveProject(false)
                                 val out = File(ctx.cacheDir, "esoftmedia-output-" + System.currentTimeMillis() + ".mp4")
-                                val items = clips.map { c ->
-                                    val media = MediaItem.Builder().setUri(c.uri).setClippingConfiguration(
-                                        MediaItem.ClippingConfiguration.Builder().setStartPositionMs(c.start).setEndPositionMs(c.end).build()
+                                val items = clips.map { clip ->
+                                    val media = MediaItem.Builder().setUri(clip.uri).setClippingConfiguration(
+                                        MediaItem.ClippingConfiguration.Builder().setStartPositionMs(clip.start).setEndPositionMs(clip.end).build()
                                     ).build()
                                     EditedMediaItem.Builder(media).setEffects(
                                         Effects(emptyList(), effects(filter, brightness, contrast, saturation, lightness, aspect, rotation, flipH, flipV, caption, resolutionHeight(resolution)))
                                     ).setFrameRate(fps).setRemoveAudio(muteOriginal).build()
                                 }
-                                val seq = mutableListOf(EditedMediaItemSequence.Builder(items).build())
+                                val sequences = mutableListOf(EditedMediaItemSequence.Builder(items).build())
                                 if (musicUri != null && musicDuration > 0L) {
                                     val cut = minOf(musicDuration, clips.sumOf { it.length })
                                     if (cut > 0L) {
                                         val audioItem = MediaItem.Builder().setUri(musicUri!!).setClippingConfiguration(
                                             MediaItem.ClippingConfiguration.Builder().setStartPositionMs(0L).setEndPositionMs(cut).build()
                                         ).build()
-                                        seq.add(EditedMediaItemSequence.Builder(listOf(EditedMediaItem.Builder(audioItem).setRemoveVideo(true).build())).build())
+                                        sequences.add(EditedMediaItemSequence.Builder(listOf(EditedMediaItem.Builder(audioItem).setRemoveVideo(true).build())).build())
                                     }
                                 }
-                                val composition = MediaComposition.Builder(seq).build()
+                                val composition = MediaComposition.Builder(sequences).build()
                                 exporting = true
                                 status = "Rendering video…"
                                 val transformer = Transformer.Builder(ctx).addListener(object : Transformer.Listener {
@@ -378,44 +491,54 @@ fun VideoEditorApp() {
                                                     put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/ESOFTMEDIA")
                                                     put(MediaStore.Video.Media.IS_PENDING, 1)
                                                 }
-                                                val saved = ctx.contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values) ?: error("Cannot create destination")
-                                                ctx.contentResolver.openOutputStream(saved)?.use { o -> out.inputStream().use { i -> i.copyTo(o) } } ?: error("Cannot write destination")
+                                                val savedUri = ctx.contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values) ?: error("Cannot create destination")
+                                                ctx.contentResolver.openOutputStream(savedUri)?.use { output -> out.inputStream().use { input -> input.copyTo(output) } } ?: error("Cannot write destination")
                                                 values.clear(); values.put(MediaStore.Video.Media.IS_PENDING, 0)
-                                                ctx.contentResolver.update(saved, values, null, null)
+                                                ctx.contentResolver.update(savedUri, values, null, null)
                                                 status = "Export complete • Movies/ESOFTMEDIA"
                                                 Toast.makeText(ctx, "Video saved to Movies/ESOFTMEDIA", Toast.LENGTH_LONG).show()
                                             } else {
                                                 status = "Rendered in app storage: " + out.absolutePath
                                                 Toast.makeText(ctx, status, Toast.LENGTH_LONG).show()
                                             }
-                                        } catch (e: Exception) {
-                                            status = "Save failed: " + e.message
+                                        } catch (error: Exception) {
+                                            status = "Save failed: " + error.message
                                             Toast.makeText(ctx, status, Toast.LENGTH_LONG).show()
                                         }
                                         exporting = false
                                     }
                                     override fun onError(composition: MediaComposition, exportResult: ExportResult, exportException: ExportException) {
-                                        exporting = false; status = "Export failed: " + exportException.message
+                                        exporting = false
+                                        status = "Export failed: " + exportException.message
                                         Toast.makeText(ctx, status, Toast.LENGTH_LONG).show()
                                     }
                                 }).build()
                                 runCatching { transformer.start(composition, out.absolutePath) }.onFailure {
-                                    exporting = false; status = "Export start failed: " + it.message
+                                    exporting = false
+                                    status = "Export start failed: " + it.message
                                 }
                             }
                         })
                     }
-                    Spacer(Modifier.height(12.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Project", color = PAPER, fontSize = 17.sp)
-                        Spacer(Modifier.weight(1f))
-                        IconButton(onClick = { favorite = !favorite }) { Icon(Icons.Default.Favorite, "Favourite", tint = if (favorite) Color(0xFFFF4C88) else Color.Gray) }
-                        Text(if (favorite) "FAVOURITE" else "OFFLINE", color = AQUA, fontSize = 11.sp)
+                    EditorTools(tab) { tool ->
+                        tab = when (tool) {
+                            "Trim" -> "Edit"
+                            "Music", "Volume" -> "Audio"
+                            "Text", "Captions" -> "Text"
+                            "Sticker" -> "Elements"
+                            "Effect" -> "Effects"
+                            "Filter" -> "Filters"
+                            "Enhance" -> "Adjust"
+                            "Crop", "Rotate", "Flip" -> "Crop"
+                            else -> "Export"
+                        }
+                        when (tool) {
+                            "Rotate" -> rotation = (rotation + 90f) % 360f
+                            "Flip" -> flipH = !flipH
+                        }
                     }
-                    Text(status, color = Color.Gray, fontSize = 10.sp, modifier = Modifier.padding(bottom = 10.dp))
+                    Text(status, color = Color.Gray, fontSize = 9.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp))
                 }
-                BottomNav(tab) { tab = it }
-                Spacer(Modifier.height(7.dp))
             }
         }
     }
@@ -425,7 +548,11 @@ fun VideoEditorApp() {
             confirmButton = { TextButton(onClick = { caption = draft.trim(); textDialog = false; status = "Text overlay updated" }) { Text("Apply") } },
             dismissButton = { TextButton(onClick = { textDialog = false }) { Text("Cancel") } })
     }
-}
+    if (helpDialog) {
+        AlertDialog(onDismissRequest = { helpDialog = false }, title = { Text("ESOFTMEDIA Editor") },
+            text = { Text("Import clips, select a clip on the timeline, trim or split it, add music and text, apply visual adjustments, then export an MP4. Drafts are saved locally on this phone.") },
+            confirmButton = { TextButton(onClick = { helpDialog = false }) { Text("Got it") } })
+    }
 
 private fun durationMs(ctx: Context, uri: Uri): Long {
     val r = MediaMetadataRetriever()
