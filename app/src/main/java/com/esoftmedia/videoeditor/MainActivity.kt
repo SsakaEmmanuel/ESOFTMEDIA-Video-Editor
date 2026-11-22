@@ -596,6 +596,10 @@ fun VideoEditorApp() {
                             { updateActiveStyle({ it.copy(flipV = !it.flipV) }, applyPreview = true) },
                             { updateActiveStyle({ it.copy(aspect = "Original", rotation = 0f, flipH = false, flipV = false) }, applyPreview = true) }
                         )
+                        "Animation" -> AnimationPanel(editingStyle.animation) { animation ->
+                            updateActiveStyle({ current -> current.copy(animation = animation) }, applyPreview = true)
+                            status = if (animation == "None") "Clip animation cleared" else animation + " animation selected"
+                        }
                         "Speed" -> SpeedPanel(speed,
                             { value -> updateActiveStyle(transform = { current -> current.copy(speed = value) }) },
                             { commitActiveStyle(); status = "Playback speed set to %.2fx".format(speed) }
@@ -630,7 +634,8 @@ fun VideoEditorApp() {
                                     val clipEffects = effects(
                                         style.filter, style.brightness, style.contrast, style.saturation, style.lightness,
                                         style.aspect, style.rotation, style.flipH, style.flipV, caption,
-                                        resolutionHeight(resolution), mosaic = style.mosaic, speed = style.speed, includeSpeed = true
+                                        resolutionHeight(resolution), mosaic = style.mosaic, speed = style.speed,
+                                        includeSpeed = true, animation = style.animation
                                     )
                                     EditedMediaItem.Builder(media).setEffects(
                                         Effects(emptyList(), clipEffects)
@@ -702,6 +707,7 @@ fun VideoEditorApp() {
                                 "Crop" -> "Crop"
                                 "Rotate", "Flip" -> "Crop"
                                 "Speed" -> "Speed"
+                                "Animation" -> "Animation"
                                 "BG" -> "Background"
                                 "Mosaic" -> "Mosaic"
                                 else -> "Edit"
@@ -966,6 +972,7 @@ private fun EditorTools(active: String, onTool: (String) -> Unit) {
         "Enhance" to Icons.Default.HighQuality,
         "Captions" to Icons.Default.Subtitles,
         "Speed" to Icons.Default.Speed,
+        "Animation" to Icons.Default.Animation,
         "BG" to Icons.Default.Layers,
         "Crop" to Icons.Default.Crop,
         "Mosaic" to Icons.Default.BlurOn,
@@ -1055,6 +1062,7 @@ private fun encodeStyles(styles: Map<String, ClipStyle>): String {
             put("speed", style.speed.toDouble())
             put("background", style.background)
             put("mosaic", style.mosaic.toDouble())
+            put("animation", style.animation)
         })
     }
     return root.toString()
@@ -1080,7 +1088,8 @@ private fun decodeStyles(raw: String): Map<String, ClipStyle> = runCatching {
                     flipV = item.optBoolean("flipV", false),
                     speed = item.optDouble("speed", 1.0).toFloat().coerceIn(0.25f, 4f),
                     background = item.optString("background", "Black"),
-                    mosaic = item.optDouble("mosaic", 0.0).toFloat().coerceIn(0f, 100f)
+                    mosaic = item.optDouble("mosaic", 0.0).toFloat().coerceIn(0f, 100f),
+                    animation = item.optString("animation", "None")
                 ))
             }
         }
@@ -1135,7 +1144,8 @@ private fun effects(
     resolutionHeight: Int,
     mosaic: Float = 0f,
     speed: Float = 1f,
-    includeSpeed: Boolean = false
+    includeSpeed: Boolean = false,
+    animation: String = "None"
 ): MutableList<Effect> {
     val fx = mutableListOf<Effect>()
     when (filter) {
@@ -1157,6 +1167,26 @@ private fun effects(
     if (ratio > 0f) fx.add(Presentation.createForAspectRatio(ratio, Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP))
     if (resolutionHeight > 0) fx.add(Presentation.createForHeight(resolutionHeight))
     if (rotation != 0f || fh || fv) fx.add(ScaleAndRotateTransformation.Builder().setRotationDegrees(rotation).setScale(if (fh) -1f else 1f, if (fv) -1f else 1f).build())
+    if (animation != "None") {
+        fx.add(MatrixTransformation { presentationTimeUs ->
+            val progress = (presentationTimeUs / 700_000f).coerceIn(0f, 1f)
+            val matrix = Matrix()
+            when (animation) {
+                "Zoom In" -> {
+                    val scale = 1.28f - (0.28f * progress)
+                    matrix.setScale(scale, scale)
+                }
+                "Zoom Out" -> {
+                    val scale = 0.78f + (0.22f * progress)
+                    matrix.setScale(scale, scale)
+                }
+                "Slide Left" -> matrix.setTranslate((1f - progress) * 0.8f, 0f)
+                "Slide Right" -> matrix.setTranslate((progress - 1f) * 0.8f, 0f)
+                "Rotate In" -> matrix.setRotate((1f - progress) * 12f)
+            }
+            matrix
+        })
+    }
     if (caption.isNotBlank()) {
         val bmp = Bitmap.createBitmap(1280, 720, Bitmap.Config.ARGB_8888)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -1440,6 +1470,19 @@ private fun SpeedPanel(speed: Float, onSpeedChange: (Float) -> Unit, onCommit: (
             onCommit()
         }
         Text("Playback speed is stored per clip. The original clip audio is muted on speed-changed exports to prevent audio drift; add a music track for sound.", color = Color.LightGray, fontSize = 9.sp)
+    }
+}
+
+@Composable
+private fun AnimationPanel(selected: String, onSelect: (String) -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().background(Color(0xFF171A23), RoundedCornerShape(16.dp))
+            .padding(horizontal = 12.dp, vertical = 9.dp)
+    ) {
+        Text("CLIP ANIMATION", color = AQUA, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+        Text("Choose an entrance motion for the selected clip.", color = Color.LightGray, fontSize = 10.sp)
+        Chips(listOf("None", "Zoom In", "Zoom Out", "Slide Left", "Slide Right", "Rotate In"), selected, onSelect)
+        Text("Animation is applied at the start of this clip and included in export.", color = Color.LightGray, fontSize = 9.sp)
     }
 }
 
