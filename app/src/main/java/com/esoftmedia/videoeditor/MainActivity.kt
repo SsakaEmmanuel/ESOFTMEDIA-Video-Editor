@@ -459,19 +459,10 @@ fun VideoEditorApp() {
                             showHome = true
                         },
                         onHelp = { helpDialog = true },
-                        onShare = {
-                            val shareUri = active?.uri
-                            if (shareUri != null) {
-                                val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                                    type = "video/*"
-                                    putExtra(android.content.Intent.EXTRA_STREAM, shareUri)
-                                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                }
-                                runCatching { ctx.startActivity(android.content.Intent.createChooser(intent, "Share video")) }
-                                    .onFailure { Toast.makeText(ctx, "Unable to open sharing options.", Toast.LENGTH_SHORT).show() }
-                            } else Toast.makeText(ctx, "Import a video before sharing.", Toast.LENGTH_SHORT).show()
-                        },
-                        onSave = { saveProject(true) }
+                        onExport = {
+                            saveProject(false)
+                            tab = "Export"
+                        }
                     )
                     Preview(player, clips.isNotEmpty(), caption, Modifier.weight(1f).fillMaxWidth()) {
                         chooseVideos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
@@ -515,6 +506,8 @@ fun VideoEditorApp() {
                         selectedIndex = selectedIndex,
                         onSelect = { index ->
                             selectedIndex = index
+                            tab = "Edit"
+                            selectedTool = "Trim"
                             player.seekTo(index, 0L)
                         },
                         onAddClip = { chooseVideos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) },
@@ -561,9 +554,38 @@ fun VideoEditorApp() {
                                 }
                             }
                         )
-                        "Filters", "Effects" -> FilterPanel(filter) { filter = it; status = it + " filter active" }
-                        "Adjust" -> AdjustPanel(brightness, contrast, saturation, lightness, { brightness = it }, { contrast = it }, { saturation = it }, { lightness = it })
-                        "Crop" -> CropPanel(aspect, flipH, flipV, { aspect = it }, { rotation = (rotation + 90f) % 360f }, { flipH = !flipH }, { flipV = !flipV }, { aspect = "Original"; rotation = 0f; flipH = false; flipV = false })
+                        "Filters", "Effects" -> FilterPanel(filter) {
+                            updateActiveStyle({ it.copy(filter = it@FilterPanel) }, applyPreview = true)
+                            status = it + " filter active"
+                        }
+                        "Adjust" -> AdjustPanel(
+                            brightness, contrast, saturation, lightness,
+                            { value -> updateActiveStyle { it.copy(brightness = value) } },
+                            { value -> updateActiveStyle { it.copy(contrast = value) } },
+                            { value -> updateActiveStyle { it.copy(saturation = value) } },
+                            { value -> updateActiveStyle { it.copy(lightness = value) } },
+                            onCommit = { commitActiveStyle() }
+                        )
+                        "Crop" -> CropPanel(
+                            aspect, flipH, flipV,
+                            { value -> updateActiveStyle({ it.copy(aspect = value) }, applyPreview = true) },
+                            { updateActiveStyle({ it.copy(rotation = (it.rotation + 90f) % 360f) }, applyPreview = true) },
+                            { updateActiveStyle({ it.copy(flipH = !it.flipH) }, applyPreview = true) },
+                            { updateActiveStyle({ it.copy(flipV = !it.flipV) }, applyPreview = true) },
+                            { updateActiveStyle({ it.copy(aspect = "Original", rotation = 0f, flipH = false, flipV = false) }, applyPreview = true) }
+                        )
+                        "Speed" -> SpeedPanel(speed,
+                            { value -> updateActiveStyle { it.copy(speed = value) } },
+                            { commitActiveStyle(); status = "Playback speed set to %.2fx".format(speed) }
+                        )
+                        "Background" -> BackgroundPanel(committedStyle.background) { value ->
+                            updateActiveStyle({ it.copy(background = value) }, applyPreview = true)
+                            status = "Preview background set to " + value
+                        }
+                        "Mosaic" -> MosaicPanel(committedStyle.mosaic,
+                            { value -> updateActiveStyle { it.copy(mosaic = value) } },
+                            { commitActiveStyle(); status = if (committedStyle.mosaic > 0f) "Full-clip blur applied" else "Blur removed" }
+                        )
                         "Audio" -> AudioPanel(
                             musicUri != null, musicVolume, muteOriginal,
                             { chooseAudio.launch(arrayOf("audio/*")) },
@@ -582,8 +604,14 @@ fun VideoEditorApp() {
                                     val media = MediaItem.Builder().setUri(clip.uri).setClippingConfiguration(
                                         MediaItem.ClippingConfiguration.Builder().setStartPositionMs(clip.start).setEndPositionMs(clip.end).build()
                                     ).build()
+                                                val style = clipStyles[clip.id] ?: ClipStyle()
+                                    val clipEffects = effects(
+                                        style.filter, style.brightness, style.contrast, style.saturation, style.lightness,
+                                        style.aspect, style.rotation, style.flipH, style.flipV, caption,
+                                        resolutionHeight(resolution), mosaic = style.mosaic, speed = style.speed, includeSpeed = true
+                                    )
                                     EditedMediaItem.Builder(media).setEffects(
-                                        Effects(emptyList(), effects(filter, brightness, contrast, saturation, lightness, aspect, rotation, flipH, flipV, caption, resolutionHeight(resolution)))
+                                        Effects(emptyList(), clipEffects)
                                     ).setFrameRate(fps).setRemoveAudio(muteOriginal).build()
                                 }
                                 val sequences = mutableListOf(EditedMediaItemSequence.Builder(items).build())
@@ -638,21 +666,28 @@ fun VideoEditorApp() {
                             }
                         })
                     }
-                    EditorTools(tab) { tool ->
-                        tab = when (tool) {
-                            "Trim" -> "Edit"
-                            "Music", "Volume" -> "Audio"
-                            "Text", "Captions" -> "Text"
-                            "Sticker" -> "Elements"
-                            "Effect" -> "Effects"
-                            "Filter" -> "Filters"
-                            "Enhance" -> "Adjust"
-                            "Crop", "Rotate", "Flip" -> "Crop"
-                            else -> "Export"
-                        }
-                        when (tool) {
-                            "Rotate" -> rotation = (rotation + 90f) % 360f
-                            "Flip" -> flipH = !flipH
+                    if (active != null) {
+                        EditorTools(selectedTool) { tool ->
+                            selectedTool = tool
+                            tab = when (tool) {
+                                "Trim" -> "Edit"
+                                "Music", "Volume" -> "Audio"
+                                "Text", "Captions" -> "Text"
+                                "Sticker" -> "Elements"
+                                "Effect" -> "Effects"
+                                "Filter" -> "Filters"
+                                "Enhance" -> "Adjust"
+                                "Crop" -> "Crop"
+                                "Rotate", "Flip" -> "Crop"
+                                "Speed" -> "Speed"
+                                "BG" -> "Background"
+                                "Mosaic" -> "Mosaic"
+                                else -> "Edit"
+                            }
+                            when (tool) {
+                                "Rotate" -> updateActiveStyle({ it.copy(rotation = (it.rotation + 90f) % 360f) }, applyPreview = true)
+                                "Flip" -> updateActiveStyle({ it.copy(flipH = !it.flipH) }, applyPreview = true)
+                            }
                         }
                     }
                     Text(status, color = Color.Gray, fontSize = 9.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp))
