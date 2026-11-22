@@ -164,6 +164,34 @@ fun VideoEditorApp() {
     var helpDialog by remember { mutableStateOf(false) }
     val active = clips.getOrNull(selectedIndex.coerceIn(0, (clips.size - 1).coerceAtLeast(0)))
 
+    fun updateActiveStyle(transform: (ClipStyle) -> ClipStyle, applyPreview: Boolean = false) {
+        val clip = active ?: return
+        val current = clipStyles[clip.id] ?: committedStyle
+        val updated = transform(current).copy(speed = transform(current).speed.coerceIn(0.25f, 4f))
+        clipStyles = clipStyles + (clip.id to updated)
+        filter = updated.filter
+        brightness = updated.brightness
+        contrast = updated.contrast
+        saturation = updated.saturation
+        lightness = updated.lightness
+        aspect = updated.aspect
+        rotation = updated.rotation
+        flipH = updated.flipH
+        flipV = updated.flipV
+        speed = updated.speed
+        if (applyPreview) {
+            committedStyle = updated
+            player.setPlaybackParameters(PlaybackParameters(updated.speed))
+        }
+    }
+
+    fun commitActiveStyle() {
+        val clip = active ?: return
+        val style = clipStyles[clip.id] ?: committedStyle
+        committedStyle = style
+        player.setPlaybackParameters(PlaybackParameters(style.speed))
+    }
+
     val chooseVideos = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(20)) { uris ->
         val added = uris.mapNotNull { uri ->
             runCatching { ctx.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
@@ -237,7 +265,28 @@ fun VideoEditorApp() {
             }
         }
     }
-    LaunchedEffect(active?.id) { active?.let { trimA = it.start.toFloat(); trimB = it.end.toFloat() } }
+    LaunchedEffect(active?.id) {
+        active?.let { clip ->
+            trimA = clip.start.toFloat()
+            trimB = clip.end.toFloat()
+            val style = clipStyles[clip.id] ?: ClipStyle()
+            if (clipStyles[clip.id] == null) clipStyles = clipStyles + (clip.id to style)
+            filter = style.filter
+            brightness = style.brightness
+            contrast = style.contrast
+            saturation = style.saturation
+            lightness = style.lightness
+            aspect = style.aspect
+            rotation = style.rotation
+            flipH = style.flipH
+            flipV = style.flipV
+            speed = style.speed
+            committedStyle = style
+            player.setPlaybackParameters(PlaybackParameters(style.speed))
+            tab = "Edit"
+            selectedTool = "Trim"
+        }
+    }
     LaunchedEffect(Unit) {
         val prefs = ctx.getSharedPreferences("esoftmedia_editor", Context.MODE_PRIVATE)
         runCatching {
@@ -272,10 +321,23 @@ fun VideoEditorApp() {
             delay(200)
         }
     }
-    val previewFx = remember(filter, brightness, contrast, saturation, lightness, aspect, rotation, flipH, flipV) {
-        effects(filter, brightness, contrast, saturation, lightness, aspect, rotation, flipH, flipV, "", resolutionHeight = 0)
+    // Build the preview pipeline off the UI thread. It changes only when a tool is
+    // committed (not on every intermediate slider movement), avoiding renderer churn.
+    LaunchedEffect(active?.id, committedStyle) {
+        val clipId = active?.id ?: return@LaunchedEffect
+        delay(120)
+        val style = committedStyle
+        val previewEffects = withContext(Dispatchers.Default) {
+            effects(
+                style.filter, style.brightness, style.contrast, style.saturation, style.lightness,
+                style.aspect, style.rotation, style.flipH, style.flipV, "", resolutionHeight = 0
+            )
+        }
+        if (active?.id == clipId) {
+            runCatching { player.setVideoEffects(previewEffects) }
+                .onFailure { status = "Preview effect could not be applied" }
+        }
     }
-    LaunchedEffect(previewFx) { player.setVideoEffects(previewFx) }
 
     fun saveProject(showToast: Boolean = true) {
         if (clips.isEmpty()) return
