@@ -443,12 +443,29 @@ private fun time(ms: Long): String { val sec = ms.coerceAtLeast(0L) / 1000L; ret
         if (clips.isEmpty()) { Text("Import videos to start editing.", color = Color.LightGray, fontSize = 12.sp); Action("Import videos", import) }
         else {
             Text(clips.size.toString() + " clip(s) • tap to select", color = PAPER, fontSize = 11.sp)
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                clips.forEachIndexed { i, c ->
-                    Surface(color = if (i == index) Color(0xFF253B42) else Color(0xFF242733), shape = RoundedCornerShape(9.dp), modifier = Modifier.width(105.dp).clickable { choose(i) }) {
-                        Column(Modifier.padding(8.dp)) { Text("CLIP " + (i + 1), color = if (i == index) AQUA else PAPER, fontSize = 10.sp, fontWeight = FontWeight.Bold); Text(time(c.length), color = Color.LightGray, fontSize = 10.sp) }
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                clips.forEachIndexed { i, clip ->
+                    Box(Modifier.width((clip.length / 1000f * 24f).coerceIn(82f, 180f).dp).height(54.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Brush.horizontalGradient(if (i == index) listOf(Color(0xFF7B2CFF), Color(0xFF00CFC4)) else listOf(Color(0xFF252936), Color(0xFF313647))))
+                        .border(if (i == index) 2.dp else 1.dp, if (i == index) AQUA else Color(0xFF414552), RoundedCornerShape(8.dp))
+                        .clickable { choose(i) }, contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("VIDEO " + (i + 1), color = PAPER, fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                            Text(time(clip.length), color = PAPER.copy(alpha = .85f), fontSize = 10.sp)
+                        }
                     }
                 }
+                Box(Modifier.width(54.dp).height(54.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF272A35)).clickable(onClick = import), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.Add, "Add clip", tint = AQUA)
+                }
+            }
+            Spacer(Modifier.height(7.dp))
+            Row(Modifier.fillMaxWidth().height(28.dp).clip(RoundedCornerShape(7.dp)).background(Color(0xFF22252F)), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.MusicNote, null, tint = AQUA, modifier = Modifier.padding(horizontal = 8.dp).size(16.dp))
+                Text("AUDIO TRACK", color = Color.LightGray, fontSize = 10.sp)
+                Spacer(Modifier.weight(1f))
+                Text("Add music from Audio", color = Color.Gray, fontSize = 9.sp, modifier = Modifier.padding(end = 8.dp))
             }
             active?.let { c ->
                 Text("Trim  " + time(c.start) + " — " + time(c.end), color = PAPER, fontSize = 12.sp)
