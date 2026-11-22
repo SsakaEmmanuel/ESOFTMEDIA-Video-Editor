@@ -954,59 +954,32 @@ private fun FrameThumbnail(uriText: String?, modifier: Modifier = Modifier) {
 
 @Composable
 private fun EditorTopBar(title: String, onClose: () -> Unit, onHelp: () -> Unit, onExport: () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().height(48.dp).background(Color(0xFF222222)).padding(horizontal = 7.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        IconButton(onClick = onClose) { Icon(Icons.Default.Close, "Close editor", tint = PAPER, modifier = Modifier.size(27.dp)) }
-        Text(title, color = PAPER, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-        IconButton(onClick = onHelp) { Icon(Icons.Default.HelpOutline, "Help", tint = PAPER, modifier = Modifier.size(25.dp)) }
-        IconButton(onClick = onExport) { Icon(Icons.Default.FileUpload, "Export video", tint = PAPER, modifier = Modifier.size(25.dp)) }
+    Row(Modifier.fillMaxWidth().height(58.dp).background(Color(0xFF101116)).padding(horizontal = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+        IconButton(onClick = onClose, modifier = Modifier.size(42.dp)) { Icon(Icons.Default.ArrowBack, "Close editor", tint = Color.White, modifier = Modifier.size(23.dp)) }
+        Column(Modifier.weight(1f)) {
+            Text(title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("VIDEO EDITOR", color = Color(0xFF9B96A5), fontSize = 8.sp, letterSpacing = 1.5.sp)
+        }
+        IconButton(onClick = onHelp, modifier = Modifier.size(40.dp)) { Icon(Icons.Default.HelpOutline, "Help", tint = Color(0xFFB8B3C1), modifier = Modifier.size(21.dp)) }
+        Button(onClick = onExport, shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF4F79)), contentPadding = PaddingValues(horizontal = 15.dp, vertical = 7.dp)) {
+            Icon(Icons.Default.FileUpload, null, modifier = Modifier.size(17.dp)); Spacer(Modifier.width(5.dp)); Text("Export", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        }
     }
 }
 
 @Composable
 private fun EditorTools(active: String, onTool: (String) -> Unit) {
-    val tools = listOf(
-        "Filter" to Icons.Default.FilterVintage,
-        "Enhance" to Icons.Default.HighQuality,
-        "Captions" to Icons.Default.Subtitles,
-        "Speed" to Icons.Default.Speed,
-        "Animation" to Icons.Default.Animation,
-        "BG" to Icons.Default.Layers,
-        "Crop" to Icons.Default.Crop,
-        "Mosaic" to Icons.Default.BlurOn,
-        "Trim" to Icons.Default.ContentCut,
-        "Music" to Icons.Default.MusicNote,
-        "Text" to Icons.Default.TextFields,
-        "Sticker" to Icons.Default.EmojiEmotions,
-        "Effect" to Icons.Default.AutoAwesome,
-        "Volume" to Icons.Default.VolumeUp,
-        "Rotate" to Icons.Default.RotateRight,
-        "Flip" to Icons.Default.Flip
-    )
-    Row(
-        Modifier.fillMaxWidth().height(74.dp).background(Color(0xFF222222))
-            .horizontalScroll(rememberScrollState()).padding(horizontal = 5.dp, vertical = 5.dp),
-        horizontalArrangement = Arrangement.spacedBy(7.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
+    val tools = listOf("Trim" to Icons.Default.ContentCut, "Filter" to Icons.Default.FilterVintage, "Enhance" to Icons.Default.Tune, "Captions" to Icons.Default.Subtitles, "Speed" to Icons.Default.Speed, "Animation" to Icons.Default.Animation, "Crop" to Icons.Default.Crop, "BG" to Icons.Default.Layers, "Mosaic" to Icons.Default.BlurOn, "Music" to Icons.Default.MusicNote, "Text" to Icons.Default.TextFields, "Sticker" to Icons.Default.EmojiEmotions, "Effect" to Icons.Default.AutoAwesome, "Volume" to Icons.Default.VolumeUp, "Rotate" to Icons.Default.RotateRight, "Flip" to Icons.Default.Flip)
+    Row(Modifier.fillMaxWidth().height(82.dp).background(Color(0xFF101116)).horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 7.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         tools.forEach { (name, icon) ->
             val selected = name == active
-            Column(
-                Modifier.width(58.dp).clip(RoundedCornerShape(8.dp))
-                    .background(if (selected) Color(0xFF343434) else Color.Transparent)
-                    .clickable { onTool(name) }.padding(vertical = 5.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Icon(icon, null, tint = if (selected) Color.White else Color(0xFFCDCDCD), modifier = Modifier.size(25.dp))
-                Spacer(Modifier.height(3.dp))
-                Text(name.uppercase(), color = if (selected) Color.White else Color(0xFFBDBDBD), fontSize = 8.sp, maxLines = 1)
+            Column(Modifier.width(60.dp).clip(RoundedCornerShape(13.dp)).background(if (selected) Color(0xFF34202B) else Color(0xFF1D1B23)).border(if (selected) 1.dp else 0.dp, if (selected) Color(0xFFFF4F79) else Color.Transparent, RoundedCornerShape(13.dp)).clickable { onTool(name) }.padding(vertical = 7.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(icon, null, tint = if (selected) Color(0xFFFF7292) else Color(0xFFB9B5C1), modifier = Modifier.size(23.dp))
+                Spacer(Modifier.height(4.dp)); Text(name, color = if (selected) Color.White else Color(0xFFB9B5C1), fontSize = 9.sp, maxLines = 1)
             }
         }
     }
 }
-
 @Composable
 private fun EditToolPanel(
     clip: VideoClip?,
