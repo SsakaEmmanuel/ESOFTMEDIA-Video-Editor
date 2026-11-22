@@ -49,6 +49,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.C
 import androidx.media3.common.Effect
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.common.PlaybackException
 import androidx.media3.exoplayer.ExoPlayer
@@ -73,6 +74,22 @@ private val PAPER = Color(0xFFF7F7FA)
 data class VideoClip(val id: String, val uri: Uri, val duration: Long, val start: Long = 0L, val end: Long = duration) {
     val length: Long get() = (end - start).coerceAtLeast(0L)
 }
+
+data class ClipStyle(
+    val filter: String = "Original",
+    val brightness: Float = 0f,
+    val contrast: Float = 0f,
+    val saturation: Float = 0f,
+    val lightness: Float = 0f,
+    val aspect: String = "Original",
+    val rotation: Float = 0f,
+    val flipH: Boolean = false,
+    val flipV: Boolean = false,
+    val speed: Float = 1f,
+    val background: String = "Black",
+    val mosaic: Float = 0f
+)
+
 data class SavedProject(
     val id: String,
     val name: String,
@@ -89,7 +106,8 @@ data class SavedProject(
     val rotation: Float,
     val flipH: Boolean,
     val flipV: Boolean,
-    val favorite: Boolean
+    val favorite: Boolean,
+    val stylesJson: String = ""
 ) {
     val clips: List<VideoClip> get() = decode(clipsJson)
     val durationMs: Long get() = clips.sumOf { it.length }
@@ -134,6 +152,10 @@ fun VideoEditorApp() {
     var exporting by remember { mutableStateOf(false) }
     var trimA by remember { mutableFloatStateOf(0f) }
     var trimB by remember { mutableFloatStateOf(0f) }
+    var clipStyles by remember { mutableStateOf<Map<String, ClipStyle>>(emptyMap()) }
+    var committedStyle by remember { mutableStateOf(ClipStyle()) }
+    var speed by remember { mutableFloatStateOf(1f) }
+    var selectedTool by remember { mutableStateOf("Trim") }
     var showHome by remember { mutableStateOf(true) }
     var pendingNewProject by remember { mutableStateOf(false) }
     var projectId by remember { mutableStateOf(UUID.randomUUID().toString()) }
