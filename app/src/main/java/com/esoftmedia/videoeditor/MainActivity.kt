@@ -24,6 +24,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -42,11 +43,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.C
 import androidx.media3.common.Effect
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.effect.*
 import androidx.media3.transformer.*
+import androidx.media3.transformer.Composition as MediaComposition
 import androidx.media3.ui.PlayerView
 import org.json.JSONArray
 import org.json.JSONObject
@@ -196,7 +199,7 @@ fun VideoEditorApp() {
                     Text("Your creative studio", color = PAPER, fontSize = 25.sp, fontWeight = FontWeight.Bold)
                     Text("Create. Edit. Anywhere.", color = Color.LightGray, fontSize = 14.sp)
                     Spacer(Modifier.height(15.dp))
-                    PreviewBox(player, clips.isNotEmpty(), caption) { chooseVideos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) }
+                    Preview(player, clips.isNotEmpty(), caption) { chooseVideos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) }
                     Spacer(Modifier.height(9.dp))
                     PlaybackBar(
                         playing, position, active?.length ?: 0L,
@@ -272,21 +275,21 @@ fun VideoEditorApp() {
                                         Effects(emptyList(), effects(filter, brightness, contrast, saturation, lightness, aspect, rotation, flipH, flipV, caption, resolutionHeight(resolution)))
                                     ).setFrameRate(fps).setRemoveAudio(muteOriginal).build()
                                 }
-                                val seq = mutableListOf(EditedMediaItemSequence.withAudioAndVideoFrom(items))
+                                val seq = mutableListOf(EditedMediaItemSequence.Builder(items).build())
                                 if (musicUri != null && musicDuration > 0L) {
                                     val cut = minOf(musicDuration, clips.sumOf { it.length })
                                     if (cut > 0L) {
                                         val audioItem = MediaItem.Builder().setUri(musicUri!!).setClippingConfiguration(
                                             MediaItem.ClippingConfiguration.Builder().setStartPositionMs(0L).setEndPositionMs(cut).build()
                                         ).build()
-                                        seq.add(EditedMediaItemSequence.withAudioFrom(listOf(EditedMediaItem.Builder(audioItem).setRemoveVideo(true).build())))
+                                        seq.add(EditedMediaItemSequence.Builder(listOf(EditedMediaItem.Builder(audioItem).setRemoveVideo(true).build())).experimentalSetForceAudioTrack(true).build())
                                     }
                                 }
-                                val composition = Composition.Builder(seq).build()
+                                val composition = MediaComposition.Builder(seq).build()
                                 exporting = true
                                 status = "Rendering video…"
                                 val transformer = Transformer.Builder(ctx).addListener(object : Transformer.Listener {
-                                    override fun onCompleted(composition: Composition, exportResult: ExportResult) {
+                                    override fun onCompleted(composition: MediaComposition, exportResult: ExportResult) {
                                         try {
                                             if (Build.VERSION.SDK_INT >= 29) {
                                                 val values = ContentValues().apply {
@@ -311,7 +314,7 @@ fun VideoEditorApp() {
                                         }
                                         exporting = false
                                     }
-                                    override fun onError(composition: Composition, exportResult: ExportResult, exportException: ExportException) {
+                                    override fun onError(composition: MediaComposition, exportResult: ExportResult, exportException: ExportException) {
                                         exporting = false; status = "Export failed: " + exportException.message
                                         Toast.makeText(ctx, status, Toast.LENGTH_LONG).show()
                                     }
@@ -387,7 +390,7 @@ private fun effects(filter: String, b: Float, c: Float, s: Float, l: Float, aspe
     if (s != 0f || l != 0f) fx.add(HslAdjustment.Builder().adjustSaturation(s).adjustLightness(l).build())
     val ratio = when (aspect) { "1:1" -> 1f; "4:5" -> .8f; "16:9" -> 16f / 9f; "9:16" -> 9f / 16f; "3:2" -> 1.5f; else -> 0f }
     if (ratio > 0f) fx.add(Presentation.createForAspectRatio(ratio, Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP))
-    if (resolutionHeight > 0) fx.add(Presentation.createForShortSide(resolutionHeight))
+    if (resolutionHeight > 0) fx.add(Presentation.createForHeight(resolutionHeight))
     if (rotation != 0f || fh || fv) fx.add(ScaleAndRotateTransformation.Builder().setRotationDegrees(rotation).setScale(if (fh) -1f else 1f, if (fv) -1f else 1f).build())
     if (caption.isNotBlank()) {
         val bmp = Bitmap.createBitmap(1280, 720, Bitmap.Config.ARGB_8888)
