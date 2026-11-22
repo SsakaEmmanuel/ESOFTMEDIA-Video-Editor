@@ -562,10 +562,10 @@ fun VideoEditorApp() {
                         }
                         "Adjust" -> AdjustPanel(
                             brightness, contrast, saturation, lightness,
-                            { value -> updateActiveStyle { it.copy(brightness = value) } },
-                            { value -> updateActiveStyle { it.copy(contrast = value) } },
-                            { value -> updateActiveStyle { it.copy(saturation = value) } },
-                            { value -> updateActiveStyle { it.copy(lightness = value) } },
+                            { value -> updateActiveStyle(transform = { current -> current.copy(brightness = value) }) },
+                            { value -> updateActiveStyle(transform = { current -> current.copy(contrast = value) }) },
+                            { value -> updateActiveStyle(transform = { current -> current.copy(saturation = value) }) },
+                            { value -> updateActiveStyle(transform = { current -> current.copy(lightness = value) }) },
                             onCommit = { commitActiveStyle() }
                         )
                         "Crop" -> CropPanel(
@@ -577,7 +577,7 @@ fun VideoEditorApp() {
                             { updateActiveStyle({ it.copy(aspect = "Original", rotation = 0f, flipH = false, flipV = false) }, applyPreview = true) }
                         )
                         "Speed" -> SpeedPanel(speed,
-                            { value -> updateActiveStyle { it.copy(speed = value) } },
+                            { value -> updateActiveStyle(transform = { current -> current.copy(speed = value) }) },
                             { commitActiveStyle(); status = "Playback speed set to %.2fx".format(speed) }
                         )
                         "Background" -> BackgroundPanel(committedStyle.background) { value ->
@@ -585,7 +585,7 @@ fun VideoEditorApp() {
                             status = "Preview background set to " + value
                         }
                         "Mosaic" -> MosaicPanel(clipStyles[active?.id]?.mosaic ?: committedStyle.mosaic,
-                            { value -> updateActiveStyle { it.copy(mosaic = value) } },
+                            { value -> updateActiveStyle(transform = { current -> current.copy(mosaic = value) }) },
                             { commitActiveStyle(); status = if (committedStyle.mosaic > 0f) "Full-clip blur applied" else "Blur removed" }
                         )
                         "Audio" -> AudioPanel(
@@ -1458,7 +1458,7 @@ private fun MosaicPanel(value: Float, onChange: (Float) -> Unit, onCommit: () ->
     Column(Modifier.fillMaxWidth().background(CARD, RoundedCornerShape(15.dp)).padding(12.dp)) {
         Text("AUDIO MIXER", color = AQUA, fontWeight = FontWeight.Bold)
         Row(verticalAlignment = Alignment.CenterVertically) { Text(if (has) "Music track selected" else "No music track", color = PAPER, fontSize = 11.sp, modifier = Modifier.weight(1f)); Action(if (has) "Replace" else "Add music", add) }
-        if (has) { Adjust("Music volume", volume * 100f) { setVolume(it / 100f) }; Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(muted, setMuted); Text("Mute original audio", color = PAPER, fontSize = 11.sp); Spacer(Modifier.weight(1f)); TextButton(remove) { Text("Remove", color = Color(0xFFFF7777)) } }; Text("Background audio is added to the video export.", color = Color.LightGray, fontSize = 10.sp) }
+        if (has) { Adjust("Music volume", volume * 100f, { setVolume(it / 100f) }); Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(muted, setMuted); Text("Mute original audio", color = PAPER, fontSize = 11.sp); Spacer(Modifier.weight(1f)); TextButton(remove) { Text("Remove", color = Color(0xFFFF7777)) } }; Text("Background audio is added to the video export.", color = Color.LightGray, fontSize = 10.sp) }
     }
 }
 @Composable private fun TextPanel(caption: String, add: () -> Unit, remove: () -> Unit) {
