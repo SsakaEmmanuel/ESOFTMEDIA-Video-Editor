@@ -282,7 +282,7 @@ fun VideoEditorApp() {
                                         val audioItem = MediaItem.Builder().setUri(musicUri!!).setClippingConfiguration(
                                             MediaItem.ClippingConfiguration.Builder().setStartPositionMs(0L).setEndPositionMs(cut).build()
                                         ).build()
-                                        seq.add(EditedMediaItemSequence.Builder(listOf(EditedMediaItem.Builder(audioItem).setRemoveVideo(true).build())).experimentalSetForceAudioTrack(true).build())
+                                        seq.add(EditedMediaItemSequence.Builder(listOf(EditedMediaItem.Builder(audioItem).setRemoveVideo(true).build())).build())
                                     }
                                 }
                                 val composition = MediaComposition.Builder(seq).build()
