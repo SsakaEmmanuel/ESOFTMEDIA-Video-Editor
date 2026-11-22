@@ -1,6 +1,18 @@
+@file:OptIn(androidx.media3.common.util.UnstableApi::class)
 package com.esoftmedia.videoeditor
+
+import android.content.ContentValues
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Typeface
+import android.media.MediaMetadataRetriever
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.MediaStore
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -18,64 +30,513 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.Effect
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.effect.*
+import androidx.media3.transformer.*
 import androidx.media3.ui.PlayerView
-import androidx.media3.effect.Brightness
-import androidx.media3.effect.Contrast
-import androidx.media3.effect.HslAdjustment
-import androidx.media3.common.util.UnstableApi
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.File
+import java.util.UUID
+import kotlinx.coroutines.delay
 
-data class ClipSegment(val id:Int,val uri:Uri,val startMs:Long,val endMs:Long)
-private val Deep=Color(0xFF090A0F); private val Panel=Color(0xFF151720); private val Cyan=Color(0xFF00E5D4); private val Purple=Color(0xFF7B2CFF)
-class MainActivity:ComponentActivity(){override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);setContent{EditorApp()}}}
-@Composable fun EditorApp(){
- val ctx=LocalContext.current; var video by remember{mutableStateOf<Uri?>(null)}; var section by remember{mutableStateOf("Edit")}; var tool by remember{mutableStateOf("None")}; var fav by remember{mutableStateOf(false)}
- var filter by remember{mutableStateOf("Original")}; var ratio by remember{mutableStateOf("Original")}; var res by remember{mutableStateOf("1080p")}; var fmt by remember{mutableStateOf("MP4")}; var trim by remember{mutableStateOf(0f..100f)}; val clips= remember { mutableStateListOf<ClipSegment>() }; var nextClipId by remember{mutableIntStateOf(1)}; var brightness by remember{mutableFloatStateOf(0f)}; var contrast by remember{mutableFloatStateOf(0f)}; var saturation by remember{mutableFloatStateOf(0f)}; var lightness by remember{mutableFloatStateOf(0f)}
- val picker=rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(10)){uris-> if(uris.isNotEmpty()){video=uris.first(); clips.clear(); uris.forEach{clips.add(ClipSegment(nextClipId++,it,0L,0L))}}}; val audio=rememberLauncherForActivityResult(ActivityResultContracts.GetContent()){}
- val import={picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))}
- val player=remember(video){video?.let{ExoPlayer.Builder(ctx).build().apply{setMediaItem(MediaItem.fromUri(it));prepare();playWhenReady=false}}}; DisposableEffect(player){onDispose{player?.release()}}
- MaterialTheme(colorScheme=darkColorScheme(background=Deep,surface=Panel,primary=Cyan,secondary=Purple)){Surface(Modifier.fillMaxSize(),color=Deep){Column(Modifier.fillMaxSize().padding(horizontal=16.dp)){
- Spacer(Modifier.height(14.dp));Header();Spacer(Modifier.height(14.dp));Text("Your creative studio",color=Color.White,fontSize=24.sp,fontWeight=FontWeight.Bold);Text("Create. Edit. Anywhere.",color=Color.LightGray,fontSize=14.sp);Spacer(Modifier.height(14.dp))
- Preview(video,player,import,filter,brightness,contrast,saturation,lightness);Spacer(Modifier.height(10.dp));Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(7.dp)){Quick("Trim",Icons.Default.ContentCut,Modifier.weight(1f)){section="Edit";tool="Trim"};Quick("Music",Icons.Default.MusicNote,Modifier.weight(1f)){section="Audio";tool="Music"};Quick("Text",Icons.Default.TextFields,Modifier.weight(1f)){section="Text";tool="Text"};Quick("Effects",Icons.Default.Tune,Modifier.weight(1f)){section="Effects";tool="Effects"}}
- Spacer(Modifier.height(9.dp));Nav(section){section=it;tool="None"};Spacer(Modifier.height(8.dp))
- if(section!="Edit"||tool!="None") PanelTools(section,tool,filter,{filter=it},ratio,{ratio=it},res,{res=it},fmt,{fmt=it},trim,{trim=it},brightness,{brightness=it},contrast,{contrast=it},saturation,{saturation=it},lightness,{lightness=it},{audio.launch("audio/*")},{ if(player!=null && player.duration>0) clips.add(ClipSegment(nextClipId++,video!!,player.currentPosition,player.duration)) }, clips, {i->if(i in clips.indices){val item=clips.removeAt(i);clips.add((i-1).coerceAtLeast(0),item)}}, {i->if(i in clips.indices){val item=clips.removeAt(i);clips.add((i+1).coerceAtMost(clips.size),item)}}, {i->if(i in clips.indices)clips.removeAt(i)}) else Timeline(video!=null,clips,player)
- Row(verticalAlignment=Alignment.CenterVertically){Text("Project",color=Color.White);Spacer(Modifier.weight(1f));IconButton(onClick={fav=!fav}){Icon(Icons.Default.Favorite,"Favourite",tint=if(fav) Color(0xFFFF4C88) else Color.Gray)};Text(if(fav)"FAVOURITE" else "OFFLINE",color=Cyan,fontSize=11.sp)}
- Spacer(Modifier.weight(1f));Bottom(section){section=it;tool="None"};Spacer(Modifier.height(8.dp))
- }}}}
-@Composable private fun Header(){Row(verticalAlignment=Alignment.CenterVertically,modifier=Modifier.fillMaxWidth()){Box(Modifier.size(46.dp).background(Panel,CircleShape).border(1.dp,Color.DarkGray,CircleShape),contentAlignment=Alignment.Center){Box(Modifier.size(30.dp).background(Brush.linearGradient(listOf(Cyan,Purple)),RoundedCornerShape(9.dp)),contentAlignment=Alignment.Center){Text("E",color=Deep,fontSize=22.sp,fontWeight=FontWeight.Black)}};Spacer(Modifier.width(10.dp));Column{Text("ESOFTMEDIA",color=Color.White,fontWeight=FontWeight.ExtraBold,letterSpacing=1.4.sp);Text("VIDEO EDITOR",color=Purple,fontSize=11.sp,fontWeight=FontWeight.Bold,letterSpacing=1.5.sp)};Spacer(Modifier.weight(1f));IconButton(onClick={}){Icon(Icons.Default.Save,"Save",tint=Color.White)}}}
-@OptIn(UnstableApi::class) @Composable private fun Preview(uri:Uri?,p:ExoPlayer?,import:()->Unit,filter:String,brightness:Float,contrast:Float,saturation:Float,lightness:Float){Box(Modifier.fillMaxWidth().height(205.dp).background(Brush.linearGradient(listOf(Color(0xFF181B28),Color(0xFF101116))),RoundedCornerShape(22.dp)).border(1.dp,Color(0xFF292B37),RoundedCornerShape(22.dp)),contentAlignment=Alignment.Center){if(uri!=null&&p!=null){ LaunchedEffect(p,filter,brightness,contrast,saturation,lightness){ 
- val preset = when(filter){ "Cinema"->HslAdjustment.Builder().adjustSaturation(-8f).adjustLightness(-3f).build(); "Vintage"->HslAdjustment.Builder().adjustHue(12f).adjustSaturation(-25f).adjustLightness(5f).build(); "B&W"->HslAdjustment.Builder().adjustSaturation(-100f).build(); "Warm"->HslAdjustment.Builder().adjustHue(-8f).adjustSaturation(8f).build(); "Cool"->HslAdjustment.Builder().adjustHue(8f).adjustSaturation(-5f).build(); "Fade"->HslAdjustment.Builder().adjustLightness(12f).adjustSaturation(-18f).build(); "Vivid"->HslAdjustment.Builder().adjustSaturation(28f).build(); else->null }
- val effects = mutableListOf<androidx.media3.common.Effect>()
- if(brightness!=0f) effects.add(Brightness(brightness/100f))
- if(contrast!=0f) effects.add(Contrast(contrast/100f))
- if(saturation!=0f||lightness!=0f) effects.add(HslAdjustment.Builder().adjustSaturation(saturation).adjustLightness(lightness).build())
- if(preset!=null && filter!="Original") effects.add(preset)
- p.setVideoEffects(effects)
- }; AndroidView(factory={PlayerView(it).apply{player=p;useController=true}},update={it.player=p},modifier=Modifier.fillMaxSize());IconButton(onClick=import,modifier=Modifier.align(Alignment.TopEnd)){Icon(Icons.Default.Add,"Replace",tint=Color.White)}}else Column(Modifier.fillMaxSize().clickable(onClick=import),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.Center){Icon(Icons.Default.PlayArrow,null,tint=Cyan,modifier=Modifier.size(48.dp));Text("Import a video to preview",color=Color.White)};Text("PREVIEW",color=Color.LightGray,fontSize=10.sp,modifier=Modifier.align(Alignment.TopStart).padding(13.dp))}}
-@Composable private fun Quick(label:String,icon:androidx.compose.ui.graphics.vector.ImageVector,m:Modifier,click:()->Unit){Column(m.background(Panel,RoundedCornerShape(14.dp)).clickable(onClick=click).padding(vertical=11.dp),horizontalAlignment=Alignment.CenterHorizontally){Icon(icon,label,tint=Cyan);Text(label,color=Color.White,fontSize=11.sp)}}
-@Composable private fun Nav(active:String,choose:(String)->Unit){Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(5.dp)){listOf("Edit","Filters","Adjust","Crop","Effects","Audio","Text","Elements","Export").forEach{Surface(color=if(it==active)Purple else Panel,shape=RoundedCornerShape(9.dp),modifier=Modifier.clickable{choose(it)}){Text(it,color=Color.White,fontSize=11.sp,modifier=Modifier.padding(horizontal=11.dp,vertical=8.dp))}}}}
-@Composable private fun PanelTools(s:String,t:String,f:String,sf:(String)->Unit,r:String,sr:(String)->Unit,rs:String,srs:(String)->Unit,ft:String,sft:(String)->Unit,tr:ClosedFloatingPointRange<Float>,st:(ClosedFloatingPointRange<Float>)->Unit,brightness:Float,setBrightness:(Float)->Unit,contrast:Float,setContrast:(Float)->Unit,saturation:Float,setSaturation:(Float)->Unit,lightness:Float,setLightness:(Float)->Unit,a:()->Unit,split:()->Unit,clips:MutableList<ClipSegment>,up:(Int)->Unit,down:(Int)->Unit,remove:(Int)->Unit){Column(Modifier.fillMaxWidth().heightIn(max=235.dp).background(Panel,RoundedCornerShape(15.dp)).padding(10.dp)){Text(if(t!="None")t.uppercase() else s.uppercase(),color=Cyan,fontWeight=FontWeight.Bold);Spacer(Modifier.height(6.dp));when(s){
-"Filters"->{Text("Filter presets",color=Color.White,fontSize=12.sp);Choices(listOf("Original","Cinema","Vintage","B&W","Warm","Cool","Fade","Vivid"),f,sf)}
-"Adjust"->{Adjust("Brightness",brightness,setBrightness);Adjust("Contrast",contrast,setContrast);Adjust("Saturation",saturation,setSaturation);Adjust("Lightness",lightness,setLightness);Text("Changes apply live to preview",color=Cyan,fontSize=10.sp)}
-"Crop"->{Text("Aspect ratio",color=Color.White);Choices(listOf("Original","1:1","4:5","16:9","9:16","3:2"),r,sr);Choices(listOf("Rotate 90°","Flip H","Flip V","Reset"),"",{})}
-"Edit"->{Text("Trim range (percentage of source)",color=Color.White);RangeSlider(tr,st,valueRange=0f..100f);Text("Start ${tr.start.toInt()}% • End ${tr.endInclusive.toInt()}%",color=Color.LightGray,fontSize=11.sp);Button(split,colors=ButtonDefaults.buttonColors(containerColor=Purple)){Text("Split at playhead")};Text("Clip list • ${clips.size} segment(s)",color=Cyan);clips.forEachIndexed{index,clip->Row(verticalAlignment=Alignment.CenterVertically){Text("${index+1}. ${clip.startMs/1000}s–${clip.endMs/1000}s",color=Color.White,fontSize=11.sp,modifier=Modifier.weight(1f));TextButton({up(index)}){Text("↑")};TextButton({down(index)}){Text("↓")};TextButton({remove(index)}){Text("×")}}};Choices(listOf("Duplicate","Speed","Reverse","Freeze","Transition"),t,{})}
-"Effects"->Choices(listOf("Glow","Blur","Shake","Zoom","Glitch","RGB","VHS","Flash","Fade","Particles","Lens"),"",{})
-"Audio"->{Choices(listOf("Music","Voiceover","Sound FX","Extract audio","Fade"),"",{});Button(a,colors=ButtonDefaults.buttonColors(containerColor=Purple)){Icon(Icons.Default.Add,null);Text("Import audio")}}
-"Text"->Choices(listOf("Add text","Titles","Captions","Fonts","Animation","Subtitles"),"",{})
-"Elements"->Choices(listOf("Stickers","Emoji","Shapes","PIP","Overlay","Watermark","Frames","Masks"),"",{})
-"Export"->{Text("Resolution",color=Color.White);Choices(listOf("480p","720p","1080p","2K","4K"),rs,srs);Text("Format",color=Color.White);Choices(listOf("MP4","MOV","WEBM","GIF"),ft,sft);Choices(listOf("24 FPS","30 FPS","60 FPS"),"",{});Button({},colors=ButtonDefaults.buttonColors(containerColor=Purple)){Icon(Icons.Default.Save,null);Text("Export video")}}
-else->Choices(listOf("Canvas","Background","Reorder clips","Transitions"),"",{})}}}
-@Composable private fun Choices(opts:List<String>,sel:String,cb:(String)->Unit){Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(5.dp)){opts.forEach{Surface(color=if(it==sel)Purple else Color(0xFF252833),shape=RoundedCornerShape(8.dp),modifier=Modifier.clickable{cb(it)}){Text(it,color=Color.White,fontSize=10.sp,modifier=Modifier.padding(8.dp))}}}}
-@Composable private fun Adjust(n:String,value:Float,onChange:(Float)->Unit){Row(verticalAlignment=Alignment.CenterVertically){Text(n,color=Color.White,fontSize=10.sp,modifier=Modifier.width(70.dp));Slider(value,onChange,valueRange=-100f..100f,modifier=Modifier.weight(1f));Text(value.toInt().toString(),color=Cyan,fontSize=10.sp)}}
-@Composable private fun Timeline(has:Boolean,clips:List<ClipSegment>,player:ExoPlayer?){Column{Row{Text("Timeline",color=Color.White,fontWeight=FontWeight.SemiBold);Spacer(Modifier.weight(1f));Text(if(has)"VIDEO READY" else "EMPTY",color=Color.Gray,fontSize=11.sp)};Spacer(Modifier.height(7.dp));Box(Modifier.fillMaxWidth().height(65.dp).background(Panel,RoundedCornerShape(14.dp)).border(1.dp,Color.DarkGray,RoundedCornerShape(14.dp)).padding(9.dp),contentAlignment=Alignment.Center){Text(if(has)"${clips.size} clip(s) • ${player?.duration?.coerceAtLeast(0)?.div(1000) ?: 0}s total" else "Import media to begin your timeline",color=if(has)Cyan else Color.Gray,fontSize=11.sp)}}}
-@Composable private fun Bottom(active:String,cb:(String)->Unit){Row(Modifier.fillMaxWidth().background(Color(0xFF12141C),RoundedCornerShape(17.dp)).padding(vertical=9.dp),horizontalArrangement=Arrangement.SpaceEvenly){listOf("Edit" to Icons.Default.ContentCut,"Audio" to Icons.Default.MusicNote,"Text" to Icons.Default.TextFields,"Effects" to Icons.Default.Tune,"Export" to Icons.Default.Save).forEach{(n,i)->Column(Modifier.clickable{cb(n)},horizontalAlignment=Alignment.CenterHorizontally){Icon(i,n,tint=if(active==n)Cyan else Color.Gray);Text(n,color=if(active==n)Cyan else Color.Gray,fontSize=10.sp)}}}}
+private val BG = Color(0xFF090A0F)
+private val CARD = Color(0xFF151720)
+private val AQUA = Color(0xFF00E5D4)
+private val VIOLET = Color(0xFF7B2CFF)
+private val PAPER = Color(0xFFF7F7FA)
+
+data class VideoClip(val id: String, val uri: Uri, val duration: Long, val start: Long = 0L, val end: Long = duration) {
+    val length: Long get() = (end - start).coerceAtLeast(0L)
+}
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) { super.onCreate(savedInstanceState); setContent { VideoEditorApp() } }
+}
+
+@Composable
+fun VideoEditorApp() {
+    val ctx = LocalContext.current
+    val player = remember { ExoPlayer.Builder(ctx).build() }
+    val music = remember { ExoPlayer.Builder(ctx).build() }
+    val clips = remember { mutableStateListOf<VideoClip>() }
+    val undo = remember { mutableStateListOf<List<VideoClip>>() }
+    val redo = remember { mutableStateListOf<List<VideoClip>>() }
+    var tab by remember { mutableStateOf("Edit") }
+    var selectedIndex by remember { mutableIntStateOf(0) }
+    var position by remember { mutableLongStateOf(0L) }
+    var playing by remember { mutableStateOf(false) }
+    var filter by remember { mutableStateOf("Original") }
+    var brightness by remember { mutableFloatStateOf(0f) }
+    var contrast by remember { mutableFloatStateOf(0f) }
+    var saturation by remember { mutableFloatStateOf(0f) }
+    var lightness by remember { mutableFloatStateOf(0f) }
+    var aspect by remember { mutableStateOf("Original") }
+    var rotation by remember { mutableFloatStateOf(0f) }
+    var flipH by remember { mutableStateOf(false) }
+    var flipV by remember { mutableStateOf(false) }
+    var caption by remember { mutableStateOf("") }
+    var draft by remember { mutableStateOf("") }
+    var textDialog by remember { mutableStateOf(false) }
+    var musicUri by remember { mutableStateOf<Uri?>(null) }
+    var musicDuration by remember { mutableLongStateOf(0L) }
+    var musicVolume by remember { mutableFloatStateOf(0.8f) }
+    var muteOriginal by remember { mutableStateOf(false) }
+    var resolution by remember { mutableStateOf("1080p") }
+    var fps by remember { mutableIntStateOf(30) }
+    var favorite by remember { mutableStateOf(false) }
+    var status by remember { mutableStateOf("Ready • Offline") }
+    var exporting by remember { mutableStateOf(false) }
+    var trimA by remember { mutableFloatStateOf(0f) }
+    var trimB by remember { mutableFloatStateOf(0f) }
+    val active = clips.getOrNull(selectedIndex.coerceIn(0, (clips.size - 1).coerceAtLeast(0)))
+
+    val chooseVideos = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(20)) { uris ->
+        val added = uris.mapNotNull { uri ->
+            runCatching { ctx.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            val d = durationMs(ctx, uri)
+            if (d > 0L) VideoClip(UUID.randomUUID().toString(), uri, d) else null
+        }
+        if (added.isNotEmpty()) {
+            pushUndo(clips, undo, redo)
+            val firstAdded = clips.size
+            clips.addAll(added)
+            selectedIndex = firstAdded
+            status = "Imported " + added.size + " clip(s)"
+        } else if (uris.isNotEmpty()) Toast.makeText(ctx, "Could not read selected video.", Toast.LENGTH_LONG).show()
+    }
+    val chooseAudio = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            runCatching { ctx.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            musicUri = uri
+            musicDuration = durationMs(ctx, uri)
+            music.setMediaItem(MediaItem.fromUri(uri))
+            music.prepare()
+            music.volume = musicVolume
+            status = "Music added"
+        }
+    }
+
+    DisposableEffect(Unit) { onDispose { player.release(); music.release() } }
+
+    LaunchedEffect(clips.map { it.id + ":" + it.start + ":" + it.end }) {
+        if (clips.isEmpty()) player.clearMediaItems() else {
+            val index = selectedIndex.coerceIn(0, clips.lastIndex)
+            val items = clips.map { c ->
+                MediaItem.Builder().setUri(c.uri).setClippingConfiguration(
+                    MediaItem.ClippingConfiguration.Builder().setStartPositionMs(c.start).setEndPositionMs(c.end).build()
+                ).build()
+            }
+            player.setMediaItems(items, index, 0L)
+            player.prepare()
+        }
+    }
+    LaunchedEffect(active?.id) { active?.let { trimA = it.start.toFloat(); trimB = it.end.toFloat() } }
+    LaunchedEffect(Unit) {
+        val p = ctx.getSharedPreferences("esoftmedia_editor", Context.MODE_PRIVATE)
+        favorite = p.getBoolean("favorite", false)
+        caption = p.getString("caption", "") ?: ""
+        filter = p.getString("filter", "Original") ?: "Original"
+        aspect = p.getString("aspect", "Original") ?: "Original"
+        brightness = p.getFloat("brightness", 0f); contrast = p.getFloat("contrast", 0f)
+        saturation = p.getFloat("saturation", 0f); lightness = p.getFloat("lightness", 0f)
+        rotation = p.getFloat("rotation", 0f); flipH = p.getBoolean("flipH", false); flipV = p.getBoolean("flipV", false)
+        decode(p.getString("clips", null)).forEach { clips.add(it) }
+        p.getString("music", null)?.let { saved ->
+            musicUri = Uri.parse(saved)
+            runCatching { musicDuration = durationMs(ctx, musicUri!!); music.setMediaItem(MediaItem.fromUri(musicUri!!)); music.prepare() }
+        }
+    }
+    LaunchedEffect(Unit) {
+        while (true) {
+            position = player.currentPosition.coerceAtLeast(0L)
+            selectedIndex = player.currentMediaItemIndex.coerceIn(0, (clips.size - 1).coerceAtLeast(0))
+            playing = player.isPlaying
+            music.volume = musicVolume
+            if (playing && musicUri != null && !music.isPlaying) music.play()
+            if (!playing && music.isPlaying) music.pause()
+            delay(200)
+        }
+    }
+    val previewFx = remember(filter, brightness, contrast, saturation, lightness, aspect, rotation, flipH, flipV) {
+        effects(filter, brightness, contrast, saturation, lightness, aspect, rotation, flipH, flipV, "", resolutionHeight = 0)
+    }
+    LaunchedEffect(previewFx) { player.setVideoEffects(previewFx) }
+
+    fun saveProject() {
+        ctx.getSharedPreferences("esoftmedia_editor", Context.MODE_PRIVATE).edit()
+            .putString("clips", encode(clips)).putString("music", musicUri?.toString()).putString("caption", caption)
+            .putString("filter", filter).putString("aspect", aspect)
+            .putFloat("brightness", brightness).putFloat("contrast", contrast).putFloat("saturation", saturation)
+            .putFloat("lightness", lightness).putFloat("rotation", rotation)
+            .putBoolean("flipH", flipH).putBoolean("flipV", flipV).putBoolean("favorite", favorite).apply()
+        Toast.makeText(ctx, "Project saved on this phone", Toast.LENGTH_SHORT).show()
+    }
+
+    MaterialTheme(colorScheme = darkColorScheme(background = BG, surface = CARD, primary = AQUA, secondary = VIOLET, onSurface = PAPER)) {
+        Surface(Modifier.fillMaxSize(), color = BG) {
+            Column(Modifier.fillMaxSize()) {
+                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
+                    Spacer(Modifier.height(9.dp))
+                    Header(::saveProject)
+                    Spacer(Modifier.height(13.dp))
+                    Text("Your creative studio", color = PAPER, fontSize = 25.sp, fontWeight = FontWeight.Bold)
+                    Text("Create. Edit. Anywhere.", color = Color.LightGray, fontSize = 14.sp)
+                    Spacer(Modifier.height(15.dp))
+                    PreviewBox(player, clips.isNotEmpty(), caption) { chooseVideos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) }
+                    Spacer(Modifier.height(9.dp))
+                    PlaybackBar(
+                        playing, position, active?.length ?: 0L,
+                        { if (clips.isNotEmpty()) { if (player.isPlaying) { player.pause(); music.pause() } else { player.play(); musicUri?.let { music.play() } } } },
+                        { player.pause(); player.seekTo(0L); music.pause(); music.seekTo(0L) },
+                        { if (clips.isNotEmpty()) player.seekTo((player.currentMediaItemIndex - 1).coerceAtLeast(0), 0L) },
+                        { if (clips.isNotEmpty()) player.seekTo((player.currentMediaItemIndex + 1).coerceAtMost(clips.lastIndex), 0L) },
+                        { player.seekTo(it.toLong()) }
+                    )
+                    Spacer(Modifier.height(11.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Quick("Trim", Icons.Default.ContentCut, Modifier.weight(1f)) { tab = "Edit" }
+                        Quick("Music", Icons.Default.MusicNote, Modifier.weight(1f)) { tab = "Audio" }
+                        Quick("Text", Icons.Default.TextFields, Modifier.weight(1f)) { tab = "Text" }
+                        Quick("Effects", Icons.Default.Tune, Modifier.weight(1f)) { tab = "Effects" }
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Nav(tab) { tab = it }
+                    Spacer(Modifier.height(9.dp))
+                    when (tab) {
+                        "Edit" -> TimelinePanel(
+                            clips, selectedIndex, active, trimA, trimB,
+                            { i -> selectedIndex = i; player.seekTo(i, 0L) },
+                            { a, b -> trimA = a; trimB = b },
+                            {
+                                active?.let { c ->
+                                    val a = trimA.toLong().coerceIn(0L, c.duration - 1L)
+                                    val b = trimB.toLong().coerceIn(a + 1L, c.duration)
+                                    changeClip(clips, selectedIndex, c.copy(start = a, end = b), undo, redo)
+                                }
+                            },
+                            {
+                                active?.let { c ->
+                                    val split = (c.start + player.currentPosition).coerceIn(c.start + 1L, c.end - 1L)
+                                    if (split in (c.start + 1L) until c.end) {
+                                        pushUndo(clips, undo, redo)
+                                        clips[selectedIndex] = c.copy(end = split)
+                                        clips.add(selectedIndex + 1, c.copy(id = UUID.randomUUID().toString(), start = split))
+                                        status = "Clip split"
+                                    } else Toast.makeText(ctx, "Put the playhead inside the clip first.", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            { active?.let { pushUndo(clips, undo, redo); clips.add(selectedIndex + 1, it.copy(id = UUID.randomUUID().toString())); status = "Clip duplicated" } },
+                            { if (active != null) { pushUndo(clips, undo, redo); clips.removeAt(selectedIndex); selectedIndex = (selectedIndex - 1).coerceAtLeast(0); status = "Clip deleted" } },
+                            { direction -> val target = selectedIndex + direction; if (target in clips.indices) { pushUndo(clips, undo, redo); val c = clips.removeAt(selectedIndex); clips.add(target, c); selectedIndex = target } },
+                            { if (undo.isNotEmpty()) { redo.add(clips.toList()); val old = undo.removeAt(undo.lastIndex); clips.clear(); clips.addAll(old); selectedIndex = selectedIndex.coerceIn(0, (clips.size - 1).coerceAtLeast(0)) } },
+                            { if (redo.isNotEmpty()) { undo.add(clips.toList()); val newer = redo.removeAt(redo.lastIndex); clips.clear(); clips.addAll(newer); selectedIndex = selectedIndex.coerceIn(0, (clips.size - 1).coerceAtLeast(0)) } },
+                            undo.isNotEmpty(), redo.isNotEmpty(),
+                            { chooseVideos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) }
+                        )
+                        "Filters", "Effects" -> FilterPanel(filter) { filter = it; status = it + " filter active" }
+                        "Adjust" -> AdjustPanel(brightness, contrast, saturation, lightness, { brightness = it }, { contrast = it }, { saturation = it }, { lightness = it })
+                        "Crop" -> CropPanel(aspect, flipH, flipV, { aspect = it }, { rotation = (rotation + 90f) % 360f }, { flipH = !flipH }, { flipV = !flipV }, { aspect = "Original"; rotation = 0f; flipH = false; flipV = false })
+                        "Audio" -> AudioPanel(
+                            musicUri != null, musicVolume, muteOriginal,
+                            { chooseAudio.launch(arrayOf("audio/*")) },
+                            { musicVolume = it; music.volume = it },
+                            { muteOriginal = it },
+                            { musicUri = null; musicDuration = 0L; music.stop(); status = "Music removed" }
+                        )
+                        "Text" -> TextPanel(caption, { draft = caption; textDialog = true }, { caption = ""; status = "Text removed" })
+                        "Elements" -> ElementsPanel { caption = (caption + " " + it).trim(); status = "Sticker added to overlay" }
+                        "Export" -> ExportPanel(resolution, fps, status, exporting, { resolution = it }, { fps = it }, {
+                            if (clips.isEmpty()) Toast.makeText(ctx, "Import a video first.", Toast.LENGTH_SHORT).show()
+                            else if (!exporting) {
+                                saveProject()
+                                val out = File(ctx.cacheDir, "esoftmedia-output-" + System.currentTimeMillis() + ".mp4")
+                                val items = clips.map { c ->
+                                    val media = MediaItem.Builder().setUri(c.uri).setClippingConfiguration(
+                                        MediaItem.ClippingConfiguration.Builder().setStartPositionMs(c.start).setEndPositionMs(c.end).build()
+                                    ).build()
+                                    EditedMediaItem.Builder(media).setEffects(
+                                        Effects(emptyList(), effects(filter, brightness, contrast, saturation, lightness, aspect, rotation, flipH, flipV, caption, resolutionHeight(resolution)))
+                                    ).setFrameRate(fps).setRemoveAudio(muteOriginal).build()
+                                }
+                                val seq = mutableListOf(EditedMediaItemSequence.withAudioAndVideoFrom(items))
+                                if (musicUri != null && musicDuration > 0L) {
+                                    val cut = minOf(musicDuration, clips.sumOf { it.length })
+                                    if (cut > 0L) {
+                                        val audioItem = MediaItem.Builder().setUri(musicUri!!).setClippingConfiguration(
+                                            MediaItem.ClippingConfiguration.Builder().setStartPositionMs(0L).setEndPositionMs(cut).build()
+                                        ).build()
+                                        seq.add(EditedMediaItemSequence.withAudioFrom(listOf(EditedMediaItem.Builder(audioItem).setRemoveVideo(true).build())))
+                                    }
+                                }
+                                val composition = Composition.Builder(seq).build()
+                                exporting = true
+                                status = "Rendering video…"
+                                val transformer = Transformer.Builder(ctx).addListener(object : Transformer.Listener {
+                                    override fun onCompleted(composition: Composition, exportResult: ExportResult) {
+                                        try {
+                                            if (Build.VERSION.SDK_INT >= 29) {
+                                                val values = ContentValues().apply {
+                                                    put(MediaStore.Video.Media.DISPLAY_NAME, "ESOFTMEDIA-" + System.currentTimeMillis() + ".mp4")
+                                                    put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+                                                    put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/ESOFTMEDIA")
+                                                    put(MediaStore.Video.Media.IS_PENDING, 1)
+                                                }
+                                                val saved = ctx.contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values) ?: error("Cannot create destination")
+                                                ctx.contentResolver.openOutputStream(saved)?.use { o -> out.inputStream().use { i -> i.copyTo(o) } } ?: error("Cannot write destination")
+                                                values.clear(); values.put(MediaStore.Video.Media.IS_PENDING, 0)
+                                                ctx.contentResolver.update(saved, values, null, null)
+                                                status = "Export complete • Movies/ESOFTMEDIA"
+                                                Toast.makeText(ctx, "Video saved to Movies/ESOFTMEDIA", Toast.LENGTH_LONG).show()
+                                            } else {
+                                                status = "Rendered in app storage: " + out.absolutePath
+                                                Toast.makeText(ctx, status, Toast.LENGTH_LONG).show()
+                                            }
+                                        } catch (e: Exception) {
+                                            status = "Save failed: " + e.message
+                                            Toast.makeText(ctx, status, Toast.LENGTH_LONG).show()
+                                        }
+                                        exporting = false
+                                    }
+                                    override fun onError(composition: Composition, exportResult: ExportResult, exportException: ExportException) {
+                                        exporting = false; status = "Export failed: " + exportException.message
+                                        Toast.makeText(ctx, status, Toast.LENGTH_LONG).show()
+                                    }
+                                }).build()
+                                runCatching { transformer.start(composition, out.absolutePath) }.onFailure {
+                                    exporting = false; status = "Export start failed: " + it.message
+                                }
+                            }
+                        })
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Project", color = PAPER, fontSize = 17.sp)
+                        Spacer(Modifier.weight(1f))
+                        IconButton(onClick = { favorite = !favorite }) { Icon(Icons.Default.Favorite, "Favourite", tint = if (favorite) Color(0xFFFF4C88) else Color.Gray) }
+                        Text(if (favorite) "FAVOURITE" else "OFFLINE", color = AQUA, fontSize = 11.sp)
+                    }
+                    Text(status, color = Color.Gray, fontSize = 10.sp, modifier = Modifier.padding(bottom = 10.dp))
+                }
+                BottomNav(tab) { tab = it }
+                Spacer(Modifier.height(7.dp))
+            }
+        }
+    }
+    if (textDialog) {
+        AlertDialog(onDismissRequest = { textDialog = false }, title = { Text("Text on video") },
+            text = { OutlinedTextField(draft, { draft = it }, label = { Text("Title or caption") }) },
+            confirmButton = { TextButton(onClick = { caption = draft.trim(); textDialog = false; status = "Text overlay updated" }) { Text("Apply") } },
+            dismissButton = { TextButton(onClick = { textDialog = false }) { Text("Cancel") } })
+    }
+}
+
+private fun durationMs(ctx: Context, uri: Uri): Long {
+    val r = MediaMetadataRetriever()
+    return try { r.setDataSource(ctx, uri); r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L }
+    catch (_: Exception) { 0L } finally { runCatching { r.release() } }
+}
+private fun pushUndo(clips: SnapshotStateList<VideoClip>, undo: SnapshotStateList<List<VideoClip>>, redo: SnapshotStateList<List<VideoClip>>) {
+    undo.add(clips.toList()); if (undo.size > 35) undo.removeAt(0); redo.clear()
+}
+private fun changeClip(clips: SnapshotStateList<VideoClip>, i: Int, c: VideoClip, undo: SnapshotStateList<List<VideoClip>>, redo: SnapshotStateList<List<VideoClip>>) {
+    if (i in clips.indices) { pushUndo(clips, undo, redo); clips[i] = c }
+}
+private fun encode(clips: List<VideoClip>): String {
+    val a = JSONArray()
+    clips.forEach { c -> a.put(JSONObject().apply { put("id", c.id); put("uri", c.uri.toString()); put("duration", c.duration); put("start", c.start); put("end", c.end) }) }
+    return a.toString()
+}
+private fun decode(raw: String?): List<VideoClip> = runCatching {
+    if (raw.isNullOrBlank()) emptyList() else {
+        val a = JSONArray(raw)
+        (0 until a.length()).mapNotNull { n ->
+            val x = a.getJSONObject(n); val d = x.optLong("duration"); val s = x.optLong("start"); val e = x.optLong("end", d)
+            if (d <= 0L || s < 0L || e <= s || e > d) null else VideoClip(x.optString("id", UUID.randomUUID().toString()), Uri.parse(x.getString("uri")), d, s, e)
+        }
+    }
+}.getOrDefault(emptyList())
+private fun resolutionHeight(value: String): Int = when (value) { "480p" -> 480; "720p" -> 720; "1440p" -> 1440; "2160p" -> 2160; else -> 1080 }
+
+private fun effects(filter: String, b: Float, c: Float, s: Float, l: Float, aspect: String, rotation: Float, fh: Boolean, fv: Boolean, caption: String, resolutionHeight: Int): MutableList<Effect> {
+    val fx = mutableListOf<Effect>()
+    when (filter) {
+        "Cinema" -> fx.add(HslAdjustment.Builder().adjustSaturation(-8f).adjustLightness(-3f).build())
+        "Vintage" -> fx.add(HslAdjustment.Builder().adjustHue(12f).adjustSaturation(-25f).adjustLightness(5f).build())
+        "B&W" -> fx.add(HslAdjustment.Builder().adjustSaturation(-100f).build())
+        "Warm" -> fx.add(HslAdjustment.Builder().adjustHue(-8f).adjustSaturation(8f).build())
+        "Cool" -> fx.add(HslAdjustment.Builder().adjustHue(8f).adjustSaturation(-5f).build())
+        "Fade" -> fx.add(HslAdjustment.Builder().adjustLightness(12f).adjustSaturation(-18f).build())
+        "Vivid" -> fx.add(HslAdjustment.Builder().adjustSaturation(28f).build())
+    }
+    if (b != 0f) fx.add(Brightness(b / 100f))
+    if (c != 0f) fx.add(Contrast(c / 100f))
+    if (s != 0f || l != 0f) fx.add(HslAdjustment.Builder().adjustSaturation(s).adjustLightness(l).build())
+    val ratio = when (aspect) { "1:1" -> 1f; "4:5" -> .8f; "16:9" -> 16f / 9f; "9:16" -> 9f / 16f; "3:2" -> 1.5f; else -> 0f }
+    if (ratio > 0f) fx.add(Presentation.createForAspectRatio(ratio, Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP))
+    if (resolutionHeight > 0) fx.add(Presentation.createForShortSide(resolutionHeight))
+    if (rotation != 0f || fh || fv) fx.add(ScaleAndRotateTransformation.Builder().setRotationDegrees(rotation).setScale(if (fh) -1f else 1f, if (fv) -1f else 1f).build())
+    if (caption.isNotBlank()) {
+        val bmp = Bitmap.createBitmap(1280, 720, Bitmap.Config.ARGB_8888)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.WHITE; textSize = 58f; typeface = Typeface.create("sans-serif", Typeface.BOLD)
+            textAlign = Paint.Align.CENTER; setShadowLayer(6f, 2f, 3f, android.graphics.Color.BLACK)
+        }
+        Canvas(bmp).drawText(caption.take(80), 640f, 650f, paint)
+        fx.add(OverlayEffect(listOf(BitmapOverlay.createStaticBitmapOverlay(bmp))))
+    }
+    return fx
+}
+
+@Composable private fun Header(save: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(47.dp).background(CARD, CircleShape).border(1.dp, Color.DarkGray, CircleShape), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(31.dp).background(Brush.linearGradient(listOf(AQUA, VIOLET)), RoundedCornerShape(9.dp)), contentAlignment = Alignment.Center) { Text("E", color = BG, fontSize = 23.sp, fontWeight = FontWeight.Black) }
+        }
+        Spacer(Modifier.width(10.dp))
+        Column { Text("ESOFTMEDIA", color = PAPER, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.3.sp); Text("VIDEO EDITOR", color = VIOLET, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.4.sp) }
+        Spacer(Modifier.weight(1f))
+        IconButton(onClick = save) { Icon(Icons.Default.Save, "Save project", tint = PAPER) }
+    }
+}
+@Composable private fun Preview(player: ExoPlayer, hasVideo: Boolean, caption: String, import: () -> Unit) {
+    Box(Modifier.fillMaxWidth().height(205.dp).clip(RoundedCornerShape(22.dp)).background(Color(0xFF11131B)).border(1.dp, Color(0xFF292B37), RoundedCornerShape(22.dp))) {
+        if (hasVideo) {
+            AndroidView(factory = { PlayerView(it).apply { this.player = player; useController = false; resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT } }, update = { it.player = player }, modifier = Modifier.fillMaxSize())
+            if (caption.isNotBlank()) Text(caption, color = PAPER, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.BottomCenter).padding(12.dp).background(Color.Black.copy(alpha = .4f), RoundedCornerShape(6.dp)).padding(6.dp))
+        } else Column(Modifier.fillMaxSize().clickable(onClick = import), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+            Icon(Icons.Default.PlayCircle, null, tint = AQUA, modifier = Modifier.size(48.dp)); Text("Tap to import videos", color = PAPER)
+        }
+        Text("PREVIEW", color = Color.LightGray, fontSize = 10.sp, modifier = Modifier.align(Alignment.TopStart).padding(12.dp))
+        IconButton(onClick = import, modifier = Modifier.align(Alignment.TopEnd)) { Icon(Icons.Default.Add, "Add video", tint = PAPER) }
+    }
+}
+@Composable private fun PlaybackBar(playing: Boolean, position: Long, duration: Long, toggle: () -> Unit, stop: () -> Unit, prev: () -> Unit, next: () -> Unit, seek: (Float) -> Unit) {
+    Column(Modifier.fillMaxWidth().background(CARD, RoundedCornerShape(14.dp)).padding(horizontal = 10.dp, vertical = 5.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = prev) { Icon(Icons.Default.SkipPrevious, "Previous", tint = PAPER) }
+            IconButton(onClick = stop) { Icon(Icons.Default.Stop, "Stop", tint = PAPER) }
+            IconButton(onClick = toggle, modifier = Modifier.background(VIOLET, CircleShape)) { Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, "Play or pause", tint = PAPER, modifier = Modifier.size(29.dp)) }
+            IconButton(onClick = next) { Icon(Icons.Default.SkipNext, "Next", tint = PAPER) }
+        }
+        Slider(position.toFloat().coerceIn(0f, duration.coerceAtLeast(1L).toFloat()), seek, valueRange = 0f..duration.coerceAtLeast(1L).toFloat(), modifier = Modifier.height(25.dp))
+        Row { Text(time(position), color = PAPER, fontSize = 10.sp); Spacer(Modifier.weight(1f)); Text(time(duration), color = Color.LightGray, fontSize = 10.sp) }
+    }
+}
+private fun time(ms: Long): String { val sec = ms.coerceAtLeast(0L) / 1000L; return "%02d:%02d".format(sec / 60L, sec % 60L) }
+@Composable private fun Quick(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, modifier: Modifier, click: () -> Unit) {
+    Column(modifier.background(CARD, RoundedCornerShape(14.dp)).clickable(onClick = click).padding(vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) { Icon(icon, label, tint = AQUA); Text(label, color = PAPER, fontSize = 11.sp) }
+}
+@Composable private fun Nav(active: String, choose: (String) -> Unit) {
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        listOf("Edit", "Filters", "Adjust", "Crop", "Effects", "Audio", "Text", "Elements", "Export").forEach {
+            Surface(color = if (it == active) VIOLET else CARD, shape = RoundedCornerShape(9.dp), modifier = Modifier.clickable { choose(it) }) { Text(it, color = PAPER, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp)) }
+        }
+    }
+}
+@Composable private fun TimelinePanel(
+    clips: List<VideoClip>, index: Int, active: VideoClip?, a: Float, b: Float,
+    choose: (Int) -> Unit, setRange: (Float, Float) -> Unit, trim: () -> Unit, split: () -> Unit,
+    duplicate: () -> Unit, delete: () -> Unit, move: (Int) -> Unit, undo: () -> Unit,
+    redo: () -> Unit, canUndo: Boolean, canRedo: Boolean, import: () -> Unit
+) {
+    Column(Modifier.fillMaxWidth().background(CARD, RoundedCornerShape(15.dp)).padding(12.dp)) {
+        Text("TIMELINE & TRIM", color = AQUA, fontWeight = FontWeight.Bold)
+        if (clips.isEmpty()) { Text("Import videos to start editing.", color = Color.LightGray, fontSize = 12.sp); Action("Import videos", import) }
+        else {
+            Text(clips.size.toString() + " clip(s) • tap to select", color = PAPER, fontSize = 11.sp)
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                clips.forEachIndexed { i, c ->
+                    Surface(color = if (i == index) Color(0xFF253B42) else Color(0xFF242733), shape = RoundedCornerShape(9.dp), modifier = Modifier.width(105.dp).clickable { choose(i) }) {
+                        Column(Modifier.padding(8.dp)) { Text("CLIP " + (i + 1), color = if (i == index) AQUA else PAPER, fontSize = 10.sp, fontWeight = FontWeight.Bold); Text(time(c.length), color = Color.LightGray, fontSize = 10.sp) }
+                    }
+                }
+            }
+            active?.let { c ->
+                Text("Trim  " + time(c.start) + " — " + time(c.end), color = PAPER, fontSize = 12.sp)
+                RangeSlider(a.coerceIn(0f, c.duration.toFloat())..b.coerceIn(0f, c.duration.toFloat()), { setRange(it.start, it.endInclusive) }, onValueChangeFinished = trim, valueRange = 0f..c.duration.toFloat().coerceAtLeast(1f))
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                Mini("Split", Icons.Default.ContentCut, split); Mini("Duplicate", Icons.Default.ContentCopy, duplicate); Mini("Delete", Icons.Default.Delete, delete)
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                Mini("Left", Icons.Default.ArrowBack, { move(-1) }); Mini("Right", Icons.Default.ArrowForward, { move(1) })
+                Mini("Undo", Icons.Default.Undo, undo, canUndo); Mini("Redo", Icons.Default.Redo, redo, canRedo)
+            }
+            Text("Original files stay untouched. Export uses this clip order.", color = Color.LightGray, fontSize = 10.sp)
+        }
+    }
+}
+@Composable private fun FilterPanel(selected: String, choose: (String) -> Unit) {
+    Column(Modifier.fillMaxWidth().background(CARD, RoundedCornerShape(15.dp)).padding(12.dp)) { Text("FILTERS & EFFECTS", color = AQUA, fontWeight = FontWeight.Bold); Chips(listOf("Original", "Cinema", "Vintage", "B&W", "Warm", "Cool", "Fade", "Vivid"), selected, choose); Text("Live preview and rendered export.", color = Color.LightGray, fontSize = 10.sp) }
+}
+@Composable private fun AdjustPanel(b: Float, c: Float, s: Float, l: Float, ob: (Float) -> Unit, oc: (Float) -> Unit, os: (Float) -> Unit, ol: (Float) -> Unit) {
+    Column(Modifier.fillMaxWidth().background(CARD, RoundedCornerShape(15.dp)).padding(12.dp)) { Text("ADJUST", color = AQUA, fontWeight = FontWeight.Bold); Adjust("Brightness", b, ob); Adjust("Contrast", c, oc); Adjust("Saturation", s, os); Adjust("Lightness", l, ol) }
+}
+@Composable private fun Adjust(label: String, value: Float, onChange: (Float) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) { Text(label, color = PAPER, fontSize = 11.sp, modifier = Modifier.width(82.dp)); Slider(value, onChange, valueRange = -100f..100f, modifier = Modifier.weight(1f)); Text(value.toInt().toString(), color = AQUA, fontSize = 10.sp) }
+}
+@Composable private fun CropPanel(aspect: String, flipH: Boolean, flipV: Boolean, oa: (String) -> Unit, rotate: () -> Unit, fh: () -> Unit, fv: () -> Unit, reset: () -> Unit) {
+    Column(Modifier.fillMaxWidth().background(CARD, RoundedCornerShape(15.dp)).padding(12.dp)) {
+        Text("CROP & TRANSFORM", color = AQUA, fontWeight = FontWeight.Bold); Chips(listOf("Original", "1:1", "4:5", "16:9", "9:16", "3:2"), aspect, oa)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) { Mini("Rotate", Icons.Default.RotateRight, rotate); Mini(if (flipH) "Flip H ✓" else "Flip H", Icons.Default.Flip, fh); Mini(if (flipV) "Flip V ✓" else "Flip V", Icons.Default.Flip, fv); Mini("Reset", Icons.Default.RestartAlt, reset) }
+    }
+}
+@Composable private fun AudioPanel(has: Boolean, volume: Float, muted: Boolean, add: () -> Unit, setVolume: (Float) -> Unit, setMuted: (Boolean) -> Unit, remove: () -> Unit) {
+    Column(Modifier.fillMaxWidth().background(CARD, RoundedCornerShape(15.dp)).padding(12.dp)) {
+        Text("AUDIO MIXER", color = AQUA, fontWeight = FontWeight.Bold)
+        Row(verticalAlignment = Alignment.CenterVertically) { Text(if (has) "Music track selected" else "No music track", color = PAPER, fontSize = 11.sp, modifier = Modifier.weight(1f)); Action(if (has) "Replace" else "Add music", add) }
+        if (has) { Adjust("Music volume", volume * 100f) { setVolume(it / 100f) }; Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(muted, setMuted); Text("Mute original audio", color = PAPER, fontSize = 11.sp); Spacer(Modifier.weight(1f)); TextButton(remove) { Text("Remove", color = Color(0xFFFF7777)) } }; Text("Background audio is added to the video export.", color = Color.LightGray, fontSize = 10.sp) }
+    }
+}
+@Composable private fun TextPanel(caption: String, add: () -> Unit, remove: () -> Unit) {
+    Column(Modifier.fillMaxWidth().background(CARD, RoundedCornerShape(15.dp)).padding(12.dp)) {
+        Text("TEXT & TITLES", color = AQUA, fontWeight = FontWeight.Bold); Text(if (caption.isBlank()) "No text overlay yet." else caption, color = PAPER, maxLines = 2, overflow = TextOverflow.Ellipsis)
+        Row { Action(if (caption.isBlank()) "Add text" else "Edit text", add); if (caption.isNotBlank()) TextButton(remove) { Text("Remove", color = Color(0xFFFF7777)) } }
+        Text("Text appears in preview and is burned into the rendered video.", color = Color.LightGray, fontSize = 10.sp)
+    }
+}
+@Composable private fun ElementsPanel(add: (String) -> Unit) {
+    Column(Modifier.fillMaxWidth().background(CARD, RoundedCornerShape(15.dp)).padding(12.dp)) { Text("STICKERS & ELEMENTS", color = AQUA, fontWeight = FontWeight.Bold); Chips(listOf("⭐", "❤️", "🔥", "✨", "🎉", "🎵", "👏", "✅"), "", add) }
+}
+@Composable private fun ExportPanel(res: String, fps: Int, status: String, busy: Boolean, setRes: (String) -> Unit, setFps: (Int) -> Unit, export: () -> Unit) {
+    Column(Modifier.fillMaxWidth().background(CARD, RoundedCornerShape(15.dp)).padding(12.dp)) {
+        Text("EXPORT VIDEO", color = AQUA, fontWeight = FontWeight.Bold); Text("Resolution", color = PAPER, fontSize = 12.sp)
+        Chips(listOf("480p", "720p", "1080p", "1440p", "2160p"), res, setRes)
+        Text("Frame rate", color = PAPER, fontSize = 12.sp); Chips(listOf("24 FPS", "30 FPS", "60 FPS"), fps.toString() + " FPS") { setFps(it.substringBefore(" ").toInt()) }
+        Text("MP4 • Movies/ESOFTMEDIA", color = Color.LightGray, fontSize = 10.sp)
+        if (busy) LinearProgressIndicator(Modifier.fillMaxWidth(), color = AQUA)
+        Text(status, color = AQUA, fontSize = 10.sp); Action(if (busy) "Rendering…" else "Export video", export, !busy)
+    }
+}
+@Composable private fun Chips(options: List<String>, active: String, click: (String) -> Unit) {
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        options.forEach { Surface(color = if (it == active) VIOLET else Color(0xFF252833), shape = RoundedCornerShape(9.dp), modifier = Modifier.clickable { click(it) }) { Text(it, color = PAPER, fontSize = 11.sp, modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp)) } }
+    }
+}
+@Composable private fun Action(label: String, click: () -> Unit, enabled: Boolean = true) {
+    Button(click, enabled = enabled, colors = ButtonDefaults.buttonColors(containerColor = VIOLET), contentPadding = PaddingValues(horizontal = 13.dp, vertical = 7.dp)) { Text(label, fontSize = 11.sp) }
+}
+@Composable private fun Mini(label: String, icon: androidx.compose.ui.graphics.vector.ImageVector, click: () -> Unit, enabled: Boolean = true) {
+    TextButton(onClick = click, enabled = enabled, contentPadding = PaddingValues(horizontal = 3.dp, vertical = 1.dp)) { Column(horizontalAlignment = Alignment.CenterHorizontally) { Icon(icon, null, tint = if (enabled) AQUA else Color.DarkGray, modifier = Modifier.size(17.dp)); Text(label, color = if (enabled) PAPER else Color.DarkGray, fontSize = 9.sp) } }
+}
+@Composable private fun BottomNav(active: String, choose: (String) -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp).background(Color(0xFF12141C), RoundedCornerShape(18.dp)).padding(vertical = 8.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+        listOf("Edit" to Icons.Default.ContentCut, "Audio" to Icons.Default.MusicNote, "Text" to Icons.Default.TextFields, "Effects" to Icons.Default.Tune, "Export" to Icons.Default.Save).forEach { (name, icon) ->
+            Column(Modifier.clickable { choose(name) }.padding(horizontal = 5.dp), horizontalAlignment = Alignment.CenterHorizontally) { Icon(icon, name, tint = if (active == name) AQUA else Color.Gray); Text(name, color = if (active == name) AQUA else Color.Gray, fontSize = 10.sp) }
+        }
+    }
+}
