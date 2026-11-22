@@ -192,64 +192,46 @@ fun VideoEditorApp() {
     MaterialTheme(colorScheme = darkColorScheme(background = BG, surface = CARD, primary = AQUA, secondary = VIOLET, onSurface = PAPER)) {
         Surface(Modifier.fillMaxSize(), color = BG) {
             Column(Modifier.fillMaxSize()) {
-                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
-                    Spacer(Modifier.height(9.dp))
+                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp)) {
+                    Spacer(Modifier.height(7.dp))
                     Header(::saveProject)
-                    Spacer(Modifier.height(13.dp))
-                    Text("Your creative studio", color = PAPER, fontSize = 25.sp, fontWeight = FontWeight.Bold)
-                    Text("Create. Edit. Anywhere.", color = Color.LightGray, fontSize = 14.sp)
-                    Spacer(Modifier.height(15.dp))
+                    Spacer(Modifier.height(8.dp))
                     Preview(player, clips.isNotEmpty(), caption) { chooseVideos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) }
-                    Spacer(Modifier.height(9.dp))
                     PlaybackBar(
-                        playing, position, active?.length ?: 0L,
+                        playing, position, clips.sumOf { it.length },
                         { if (clips.isNotEmpty()) { if (player.isPlaying) { player.pause(); music.pause() } else { player.play(); musicUri?.let { music.play() } } } },
                         { player.pause(); player.seekTo(0L); music.pause(); music.seekTo(0L) },
                         { if (clips.isNotEmpty()) player.seekTo((player.currentMediaItemIndex - 1).coerceAtLeast(0), 0L) },
                         { if (clips.isNotEmpty()) player.seekTo((player.currentMediaItemIndex + 1).coerceAtMost(clips.lastIndex), 0L) },
                         { player.seekTo(it.toLong()) }
                     )
-                    Spacer(Modifier.height(11.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Spacer(Modifier.height(8.dp))
+                    Text("TIMELINE", color = PAPER, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    TimelinePanel(
+                        clips, selectedIndex, active, trimA, trimB,
+                        { i -> selectedIndex = i; player.seekTo(i, 0L) },
+                        { a, b -> trimA = a; trimB = b },
+                        { active?.let { c -> val a=trimA.toLong().coerceIn(0L,c.duration-1L); val b=trimB.toLong().coerceIn(a+1L,c.duration); changeClip(clips,selectedIndex,c.copy(start=a,end=b),undo,redo) } },
+                        { active?.let { c -> val split=(c.start+player.currentPosition).coerceIn(c.start+1L,c.end-1L); if(split in (c.start+1L) until c.end){ pushUndo(clips,undo,redo); clips[selectedIndex]=c.copy(end=split); clips.add(selectedIndex+1,c.copy(id=UUID.randomUUID().toString(),start=split)); status="Clip split" } else Toast.makeText(ctx,"Move playhead inside clip to split.",Toast.LENGTH_SHORT).show() } },
+                        { active?.let { pushUndo(clips,undo,redo); clips.add(selectedIndex+1,it.copy(id=UUID.randomUUID().toString())); status="Duplicated" } },
+                        { if(active!=null){ pushUndo(clips,undo,redo); clips.removeAt(selectedIndex); selectedIndex=(selectedIndex-1).coerceAtLeast(0); status="Deleted" } },
+                        { direction -> val target=selectedIndex+direction; if(target in clips.indices){pushUndo(clips,undo,redo);val cc=clips.removeAt(selectedIndex);clips.add(target,cc);selectedIndex=target} },
+                        { if(undo.isNotEmpty()){redo.add(clips.toList());val old=undo.removeAt(undo.lastIndex);clips.clear();clips.addAll(old);selectedIndex=selectedIndex.coerceIn(0,(clips.size-1).coerceAtLeast(0))} },
+                        { if(redo.isNotEmpty()){undo.add(clips.toList());val newer=redo.removeAt(redo.lastIndex);clips.clear();clips.addAll(newer);selectedIndex=selectedIndex.coerceIn(0,(clips.size-1).coerceAtLeast(0))} },
+                        undo.isNotEmpty(),redo.isNotEmpty(),
+                        { chooseVideos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) }
+                    )
+                    Spacer(Modifier.height(9.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                         Quick("Trim", Icons.Default.ContentCut, Modifier.weight(1f)) { tab = "Edit" }
                         Quick("Music", Icons.Default.MusicNote, Modifier.weight(1f)) { tab = "Audio" }
                         Quick("Text", Icons.Default.TextFields, Modifier.weight(1f)) { tab = "Text" }
                         Quick("Effects", Icons.Default.Tune, Modifier.weight(1f)) { tab = "Effects" }
                     }
-                    Spacer(Modifier.height(10.dp))
+                    Spacer(Modifier.height(8.dp))
                     Nav(tab) { tab = it }
-                    Spacer(Modifier.height(9.dp))
+                    Spacer(Modifier.height(8.dp))
                     when (tab) {
-                        "Edit" -> TimelinePanel(
-                            clips, selectedIndex, active, trimA, trimB,
-                            { i -> selectedIndex = i; player.seekTo(i, 0L) },
-                            { a, b -> trimA = a; trimB = b },
-                            {
-                                active?.let { c ->
-                                    val a = trimA.toLong().coerceIn(0L, c.duration - 1L)
-                                    val b = trimB.toLong().coerceIn(a + 1L, c.duration)
-                                    changeClip(clips, selectedIndex, c.copy(start = a, end = b), undo, redo)
-                                }
-                            },
-                            {
-                                active?.let { c ->
-                                    val split = (c.start + player.currentPosition).coerceIn(c.start + 1L, c.end - 1L)
-                                    if (split in (c.start + 1L) until c.end) {
-                                        pushUndo(clips, undo, redo)
-                                        clips[selectedIndex] = c.copy(end = split)
-                                        clips.add(selectedIndex + 1, c.copy(id = UUID.randomUUID().toString(), start = split))
-                                        status = "Clip split"
-                                    } else Toast.makeText(ctx, "Put the playhead inside the clip first.", Toast.LENGTH_SHORT).show()
-                                }
-                            },
-                            { active?.let { pushUndo(clips, undo, redo); clips.add(selectedIndex + 1, it.copy(id = UUID.randomUUID().toString())); status = "Clip duplicated" } },
-                            { if (active != null) { pushUndo(clips, undo, redo); clips.removeAt(selectedIndex); selectedIndex = (selectedIndex - 1).coerceAtLeast(0); status = "Clip deleted" } },
-                            { direction -> val target = selectedIndex + direction; if (target in clips.indices) { pushUndo(clips, undo, redo); val c = clips.removeAt(selectedIndex); clips.add(target, c); selectedIndex = target } },
-                            { if (undo.isNotEmpty()) { redo.add(clips.toList()); val old = undo.removeAt(undo.lastIndex); clips.clear(); clips.addAll(old); selectedIndex = selectedIndex.coerceIn(0, (clips.size - 1).coerceAtLeast(0)) } },
-                            { if (redo.isNotEmpty()) { undo.add(clips.toList()); val newer = redo.removeAt(redo.lastIndex); clips.clear(); clips.addAll(newer); selectedIndex = selectedIndex.coerceIn(0, (clips.size - 1).coerceAtLeast(0)) } },
-                            undo.isNotEmpty(), redo.isNotEmpty(),
-                            { chooseVideos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)) }
-                        )
                         "Filters", "Effects" -> FilterPanel(filter) { filter = it; status = it + " filter active" }
                         "Adjust" -> AdjustPanel(brightness, contrast, saturation, lightness, { brightness = it }, { contrast = it }, { saturation = it }, { lightness = it })
                         "Crop" -> CropPanel(aspect, flipH, flipV, { aspect = it }, { rotation = (rotation + 90f) % 360f }, { flipH = !flipH }, { flipV = !flipV }, { aspect = "Original"; rotation = 0f; flipH = false; flipV = false })
@@ -416,7 +398,7 @@ private fun effects(filter: String, b: Float, c: Float, s: Float, l: Float, aspe
     }
 }
 @Composable private fun Preview(player: ExoPlayer, hasVideo: Boolean, caption: String, import: () -> Unit) {
-    Box(Modifier.fillMaxWidth().height(205.dp).clip(RoundedCornerShape(22.dp)).background(Color(0xFF11131B)).border(1.dp, Color(0xFF292B37), RoundedCornerShape(22.dp))) {
+    Box(Modifier.fillMaxWidth().height(255.dp).clip(RoundedCornerShape(24.dp)).background(Color(0xFF11131B)).border(1.dp, Color(0xFF292B37), RoundedCornerShape(22.dp))) {
         if (hasVideo) {
             AndroidView(factory = { PlayerView(it).apply { this.player = player; useController = false; resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT } }, update = { it.player = player }, modifier = Modifier.fillMaxSize())
             if (caption.isNotBlank()) Text(caption, color = PAPER, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.align(Alignment.BottomCenter).padding(12.dp).background(Color.Black.copy(alpha = .4f), RoundedCornerShape(6.dp)).padding(6.dp))
