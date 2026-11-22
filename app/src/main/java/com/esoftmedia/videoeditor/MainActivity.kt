@@ -285,8 +285,6 @@ fun VideoEditorApp() {
             speed = style.speed
             committedStyle = style
             player.setPlaybackParameters(PlaybackParameters(style.speed))
-            tab = "Edit"
-            selectedTool = "Trim"
         }
     }
     LaunchedEffect(Unit) {
@@ -325,14 +323,15 @@ fun VideoEditorApp() {
     }
     // Build the preview pipeline off the UI thread. It changes only when a tool is
     // committed (not on every intermediate slider movement), avoiding renderer churn.
-    LaunchedEffect(active?.id, committedStyle) {
+    LaunchedEffect(active?.id, committedStyle.copy(speed = 1f, background = "Black")) {
         val clipId = active?.id ?: return@LaunchedEffect
         delay(120)
         val style = committedStyle
         val previewEffects = withContext(Dispatchers.Default) {
             effects(
                 style.filter, style.brightness, style.contrast, style.saturation, style.lightness,
-                style.aspect, style.rotation, style.flipH, style.flipV, "", resolutionHeight = 0
+                style.aspect, style.rotation, style.flipH, style.flipV, "", resolutionHeight = 0,
+                mosaic = style.mosaic
             )
         }
         if (active?.id == clipId) {
@@ -465,7 +464,7 @@ fun VideoEditorApp() {
                             tab = "Export"
                         }
                     )
-                    Preview(player, clips.isNotEmpty(), caption, Modifier.weight(1f).fillMaxWidth()) {
+                    Preview(player, clips.isNotEmpty(), caption, Modifier.weight(1f).fillMaxWidth(), previewBackground(committedStyle.background)) {
                         chooseVideos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
                     }
                     PlaybackBar(
@@ -1091,6 +1090,13 @@ private fun decode(raw: String?): List<VideoClip> = runCatching {
         }
     }
 }.getOrDefault(emptyList())
+private fun previewBackground(name: String): Color = when (name) {
+    "White" -> Color(0xFFF2F2F2)
+    "Charcoal" -> Color(0xFF282828)
+    "Purple" -> Color(0xFF241B35)
+    "Teal" -> Color(0xFF123B3A)
+    else -> Color.Black
+}
 private fun resolutionHeight(value: String): Int = when (value) { "480p" -> 480; "720p" -> 720; "1440p" -> 1440; "2160p" -> 2160; else -> 1080 }
 
 private fun effects(
