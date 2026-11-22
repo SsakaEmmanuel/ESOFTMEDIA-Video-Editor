@@ -924,6 +924,11 @@ private fun effects(filter: String, b: Float, c: Float, s: Float, l: Float, aspe
         IconButton(onClick = save) { Icon(Icons.Default.Save, "Save project", tint = PAPER) }
     }
 }
+private fun time(ms: Long): String {
+    val seconds = ms.coerceAtLeast(0L) / 1000L
+    return "%02d:%02d".format(seconds / 60L, seconds % 60L)
+}
+
 @Composable
 private fun Preview(
     player: ExoPlayer,
