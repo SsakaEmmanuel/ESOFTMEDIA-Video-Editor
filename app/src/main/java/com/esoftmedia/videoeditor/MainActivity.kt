@@ -132,6 +132,12 @@ fun VideoEditorApp() {
     var exporting by remember { mutableStateOf(false) }
     var trimA by remember { mutableFloatStateOf(0f) }
     var trimB by remember { mutableFloatStateOf(0f) }
+    var showHome by remember { mutableStateOf(true) }
+    var pendingNewProject by remember { mutableStateOf(false) }
+    var projectId by remember { mutableStateOf(UUID.randomUUID().toString()) }
+    var projectName by remember { mutableStateOf("Untitled Project") }
+    var drafts = remember { mutableStateListOf<SavedProject>() }
+    var helpDialog by remember { mutableStateOf(false) }
     val active = clips.getOrNull(selectedIndex.coerceIn(0, (clips.size - 1).coerceAtLeast(0)))
 
     val chooseVideos = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(20)) { uris ->
@@ -146,7 +152,14 @@ fun VideoEditorApp() {
             clips.addAll(added)
             selectedIndex = firstAdded
             status = "Imported " + added.size + " clip(s)"
-        } else if (uris.isNotEmpty()) Toast.makeText(ctx, "Could not read selected video.", Toast.LENGTH_LONG).show()
+            if (pendingNewProject) {
+                showHome = false
+                pendingNewProject = false
+            }
+        } else {
+            pendingNewProject = false
+            if (uris.isNotEmpty()) Toast.makeText(ctx, "Could not read selected video.", Toast.LENGTH_LONG).show()
+        }
     }
     val chooseAudio = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -187,19 +200,26 @@ fun VideoEditorApp() {
     }
     LaunchedEffect(active?.id) { active?.let { trimA = it.start.toFloat(); trimB = it.end.toFloat() } }
     LaunchedEffect(Unit) {
-        val p = ctx.getSharedPreferences("esoftmedia_editor", Context.MODE_PRIVATE)
-        favorite = p.getBoolean("favorite", false)
-        caption = p.getString("caption", "") ?: ""
-        filter = p.getString("filter", "Original") ?: "Original"
-        aspect = p.getString("aspect", "Original") ?: "Original"
-        brightness = p.getFloat("brightness", 0f); contrast = p.getFloat("contrast", 0f)
-        saturation = p.getFloat("saturation", 0f); lightness = p.getFloat("lightness", 0f)
-        rotation = p.getFloat("rotation", 0f); flipH = p.getBoolean("flipH", false); flipV = p.getBoolean("flipV", false)
-        runCatching { decode(p.getString("clips", null)).forEach { clips.add(it) } }.onFailure { clips.clear() }
-        p.getString("music", null)?.let { saved ->
-            musicUri = Uri.parse(saved)
-            runCatching { musicDuration = durationMs(ctx, musicUri!!); music.setMediaItem(MediaItem.fromUri(musicUri!!)); music.prepare() }.onFailure { musicUri = null }
-        }
+        val prefs = ctx.getSharedPreferences("esoftmedia_editor", Context.MODE_PRIVATE)
+        runCatching {
+            drafts.addAll(decodeDrafts(prefs.getString("saved_drafts", null)))
+            if (drafts.isEmpty()) {
+                val legacyClips = decode(prefs.getString("clips", null))
+                if (legacyClips.isNotEmpty()) {
+                    drafts.add(SavedProject(
+                        UUID.randomUUID().toString(), "Recovered Project", System.currentTimeMillis(),
+                        encode(legacyClips), prefs.getString("music", null),
+                        prefs.getString("caption", "") ?: "",
+                        prefs.getString("filter", "Original") ?: "Original",
+                        prefs.getString("aspect", "Original") ?: "Original",
+                        prefs.getFloat("brightness", 0f), prefs.getFloat("contrast", 0f),
+                        prefs.getFloat("saturation", 0f), prefs.getFloat("lightness", 0f),
+                        prefs.getFloat("rotation", 0f), prefs.getBoolean("flipH", false),
+                        prefs.getBoolean("flipV", false), prefs.getBoolean("favorite", false)
+                    ))
+                }
+            }
+        }.onFailure { status = "Draft list could not be loaded" }
     }
     LaunchedEffect(Unit) {
         while (true) {
@@ -217,14 +237,54 @@ fun VideoEditorApp() {
     }
     LaunchedEffect(previewFx) { player.setVideoEffects(previewFx) }
 
-    fun saveProject() {
+    fun saveProject(showToast: Boolean = true) {
+        if (clips.isEmpty()) return
+        val saved = SavedProject(
+            projectId, projectName, System.currentTimeMillis(), encode(clips), musicUri?.toString(),
+            caption, filter, aspect, brightness, contrast, saturation, lightness, rotation,
+            flipH, flipV, favorite
+        )
+        val existing = drafts.indexOfFirst { it.id == projectId }
+        if (existing >= 0) drafts[existing] = saved else drafts.add(0, saved)
+        drafts.sortByDescending { it.updatedAt }
         ctx.getSharedPreferences("esoftmedia_editor", Context.MODE_PRIVATE).edit()
+            .putString("saved_drafts", encodeDrafts(drafts))
             .putString("clips", encode(clips)).putString("music", musicUri?.toString()).putString("caption", caption)
             .putString("filter", filter).putString("aspect", aspect)
             .putFloat("brightness", brightness).putFloat("contrast", contrast).putFloat("saturation", saturation)
             .putFloat("lightness", lightness).putFloat("rotation", rotation)
             .putBoolean("flipH", flipH).putBoolean("flipV", flipV).putBoolean("favorite", favorite).apply()
-        Toast.makeText(ctx, "Project saved on this phone", Toast.LENGTH_SHORT).show()
+        if (showToast) Toast.makeText(ctx, "Project saved to Drafts", Toast.LENGTH_SHORT).show()
+    }
+
+    fun resetForNewProject() {
+        player.pause(); music.pause()
+        clips.clear(); undo.clear(); redo.clear()
+        musicUri = null; musicDuration = 0L; caption = ""; filter = "Original"
+        brightness = 0f; contrast = 0f; saturation = 0f; lightness = 0f
+        aspect = "Original"; rotation = 0f; flipH = false; flipV = false
+        favorite = false; selectedIndex = 0; tab = "Edit"
+        projectId = UUID.randomUUID().toString()
+        projectName = "Project " + (drafts.size + 1)
+    }
+
+    fun openDraft(draft: SavedProject) {
+        player.pause(); music.pause()
+        clips.clear()
+        clips.addAll(draft.clips)
+        undo.clear(); redo.clear()
+        selectedIndex = 0
+        projectId = draft.id; projectName = draft.name
+        caption = draft.caption; filter = draft.filter; aspect = draft.aspect
+        brightness = draft.brightness; contrast = draft.contrast
+        saturation = draft.saturation; lightness = draft.lightness
+        rotation = draft.rotation; flipH = draft.flipH; flipV = draft.flipV
+        favorite = draft.favorite
+        musicUri = draft.musicUri?.let { Uri.parse(it) }
+        musicDuration = musicUri?.let { durationMs(ctx, it) } ?: 0L
+        musicUri?.let { uri -> runCatching { music.setMediaItem(MediaItem.fromUri(uri)); music.prepare() }.onFailure { musicUri = null } }
+        status = "Draft opened"
+        tab = "Edit"; showHome = false
     }
 
     MaterialTheme(colorScheme = darkColorScheme(background = BG, surface = CARD, primary = AQUA, secondary = VIOLET, onSurface = PAPER)) {
