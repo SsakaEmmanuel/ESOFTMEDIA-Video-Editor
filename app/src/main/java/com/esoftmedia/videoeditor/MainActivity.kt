@@ -39,6 +39,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -1092,7 +1093,22 @@ private fun decode(raw: String?): List<VideoClip> = runCatching {
 }.getOrDefault(emptyList())
 private fun resolutionHeight(value: String): Int = when (value) { "480p" -> 480; "720p" -> 720; "1440p" -> 1440; "2160p" -> 2160; else -> 1080 }
 
-private fun effects(filter: String, b: Float, c: Float, s: Float, l: Float, aspect: String, rotation: Float, fh: Boolean, fv: Boolean, caption: String, resolutionHeight: Int): MutableList<Effect> {
+private fun effects(
+    filter: String,
+    b: Float,
+    c: Float,
+    s: Float,
+    l: Float,
+    aspect: String,
+    rotation: Float,
+    fh: Boolean,
+    fv: Boolean,
+    caption: String,
+    resolutionHeight: Int,
+    mosaic: Float = 0f,
+    speed: Float = 1f,
+    includeSpeed: Boolean = false
+): MutableList<Effect> {
     val fx = mutableListOf<Effect>()
     when (filter) {
         "Cinema" -> fx.add(HslAdjustment.Builder().adjustSaturation(-8f).adjustLightness(-3f).build())
@@ -1106,6 +1122,9 @@ private fun effects(filter: String, b: Float, c: Float, s: Float, l: Float, aspe
     if (b != 0f) fx.add(Brightness(b / 100f))
     if (c != 0f) fx.add(Contrast(c / 100f))
     if (s != 0f || l != 0f) fx.add(HslAdjustment.Builder().adjustSaturation(s).adjustLightness(l).build())
+    // This is a full-frame privacy blur; region-selective pixel mosaic can be layered on later.
+    if (mosaic > 0f) fx.add(GaussianBlur((mosaic / 100f * 7.5f).coerceAtLeast(0.1f)))
+    if (includeSpeed && speed != 1f) fx.add(SpeedChangeEffect(speed))
     val ratio = when (aspect) { "1:1" -> 1f; "4:5" -> .8f; "16:9" -> 16f / 9f; "9:16" -> 9f / 16f; "3:2" -> 1.5f; else -> 0f }
     if (ratio > 0f) fx.add(Presentation.createForAspectRatio(ratio, Presentation.LAYOUT_SCALE_TO_FIT_WITH_CROP))
     if (resolutionHeight > 0) fx.add(Presentation.createForHeight(resolutionHeight))
@@ -1144,9 +1163,10 @@ private fun Preview(
     hasVideo: Boolean,
     caption: String,
     modifier: Modifier = Modifier,
+    canvasBackground: Color = Color.Black,
     onImport: () -> Unit
 ) {
-    Box(modifier.fillMaxWidth().background(Color(0xFF050505))) {
+    Box(modifier.fillMaxWidth().background(canvasBackground)) {
         if (hasVideo) {
             AndroidView(
                 factory = { context ->
@@ -1154,10 +1174,15 @@ private fun Preview(
                         this.player = player
                         useController = false
                         resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
-                        setShutterBackgroundColor(android.graphics.Color.BLACK)
+                        setBackgroundColor(canvasBackground.toArgb())
+                        setShutterBackgroundColor(canvasBackground.toArgb())
                     }
                 },
-                update = { it.player = player },
+                update = {
+                    it.player = player
+                    it.setBackgroundColor(canvasBackground.toArgb())
+                    it.setShutterBackgroundColor(canvasBackground.toArgb())
+                },
                 modifier = Modifier.fillMaxSize()
             )
             if (caption.isNotBlank()) {
@@ -1368,6 +1393,59 @@ private fun Adjust(
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) { Mini("Rotate", Icons.Default.RotateRight, rotate); Mini(if (flipH) "Flip H ✓" else "Flip H", Icons.Default.Flip, fh); Mini(if (flipV) "Flip V ✓" else "Flip V", Icons.Default.Flip, fv); Mini("Reset", Icons.Default.RestartAlt, reset) }
     }
 }
+@Composable
+private fun SpeedPanel(speed: Float, onSpeedChange: (Float) -> Unit, onCommit: () -> Unit) {
+    Column(Modifier.fillMaxWidth().background(Color(0xFF171A23), RoundedCornerShape(16.dp)).padding(12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("SPEED", color = AQUA, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            Spacer(Modifier.weight(1f))
+            Text("%.2fx".format(speed), color = Color.White, fontWeight = FontWeight.Bold)
+        }
+        Slider(
+            value = speed.coerceIn(0.25f, 4f),
+            onValueChange = onSpeedChange,
+            onValueChangeFinished = onCommit,
+            valueRange = 0.25f..4f
+        )
+        Chips(listOf("0.25x", "0.5x", "0.75x", "1x", "1.5x", "2x", "3x", "4x"), "%.2gx".format(speed)) {
+            onSpeedChange(it.removeSuffix("x").toFloat())
+            onCommit()
+        }
+        Text("Playback speed is stored on this clip. Export renders the selected speed; original audio timing may need a separate audio-stretch pass.", color = Color.LightGray, fontSize = 9.sp)
+    }
+}
+
+@Composable
+private fun BackgroundPanel(selected: String, onSelect: (String) -> Unit) {
+    Column(Modifier.fillMaxWidth().background(Color(0xFF171A23), RoundedCornerShape(16.dp)).padding(12.dp)) {
+        Text("BACKGROUND", color = AQUA, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+        Text("Choose the preview canvas colour around the fitted video.", color = Color.LightGray, fontSize = 10.sp)
+        Chips(listOf("Black", "Charcoal", "White", "Purple", "Teal"), selected, onSelect)
+    }
+}
+
+@Composable
+private fun MosaicPanel(value: Float, onChange: (Float) -> Unit, onCommit: () -> Unit) {
+    Column(Modifier.fillMaxWidth().background(Color(0xFF171A23), RoundedCornerShape(16.dp)).padding(12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("MOSAIC / BLUR", color = AQUA, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            Spacer(Modifier.weight(1f))
+            Text(if (value <= 0f) "Off" else value.toInt().toString() + "%", color = Color.White)
+        }
+        Slider(value.coerceIn(0f, 100f), onChange, onValueChangeFinished = onCommit, valueRange = 0f..100f)
+        Chips(listOf("Off", "Low", "Medium", "Strong"), when {
+            value <= 0f -> "Off"
+            value < 30f -> "Low"
+            value < 65f -> "Medium"
+            else -> "Strong"
+        }) {
+            onChange(when (it) { "Off" -> 0f; "Low" -> 20f; "Medium" -> 50f; else -> 85f })
+            onCommit()
+        }
+        Text("Applies a full-frame blur to the clip. Selecting and masking only one face or object is a later enhancement.", color = Color.LightGray, fontSize = 9.sp)
+    }
+}
+
 @Composable private fun AudioPanel(has: Boolean, volume: Float, muted: Boolean, add: () -> Unit, setVolume: (Float) -> Unit, setMuted: (Boolean) -> Unit, remove: () -> Unit) {
     Column(Modifier.fillMaxWidth().background(CARD, RoundedCornerShape(15.dp)).padding(12.dp)) {
         Text("AUDIO MIXER", color = AQUA, fontWeight = FontWeight.Bold)
