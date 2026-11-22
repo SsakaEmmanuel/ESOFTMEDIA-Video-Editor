@@ -124,12 +124,18 @@ fun VideoEditorApp() {
     val chooseAudio = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             runCatching { ctx.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
-            musicUri = uri
-            musicDuration = durationMs(ctx, uri)
-            music.setMediaItem(MediaItem.fromUri(uri))
-            music.prepare()
-            music.volume = musicVolume
-            status = "Music added"
+            runCatching {
+                musicUri = uri
+                musicDuration = durationMs(ctx, uri)
+                music.setMediaItem(MediaItem.fromUri(uri))
+                music.prepare()
+                music.volume = musicVolume
+                status = "Music added"
+            }.onFailure {
+                musicUri = null
+                status = "Couldn't open audio file"
+                Toast.makeText(ctx, "This audio file couldn't be opened.", Toast.LENGTH_LONG).show()
+            }
         }
     }
 
@@ -143,8 +149,13 @@ fun VideoEditorApp() {
                     MediaItem.ClippingConfiguration.Builder().setStartPositionMs(c.start).setEndPositionMs(c.end).build()
                 ).build()
             }
-            player.setMediaItems(items, index, 0L)
-            player.prepare()
+            runCatching {
+                player.setMediaItems(items, index, 0L)
+                player.prepare()
+            }.onFailure {
+                status = "Video playback error"
+                Toast.makeText(ctx, "This video format may not be supported.", Toast.LENGTH_SHORT).show()
+            }
         }
     }
     LaunchedEffect(active?.id) { active?.let { trimA = it.start.toFloat(); trimB = it.end.toFloat() } }
@@ -157,10 +168,10 @@ fun VideoEditorApp() {
         brightness = p.getFloat("brightness", 0f); contrast = p.getFloat("contrast", 0f)
         saturation = p.getFloat("saturation", 0f); lightness = p.getFloat("lightness", 0f)
         rotation = p.getFloat("rotation", 0f); flipH = p.getBoolean("flipH", false); flipV = p.getBoolean("flipV", false)
-        decode(p.getString("clips", null)).forEach { clips.add(it) }
+        runCatching { decode(p.getString("clips", null)).forEach { clips.add(it) } }.onFailure { clips.clear() }
         p.getString("music", null)?.let { saved ->
             musicUri = Uri.parse(saved)
-            runCatching { musicDuration = durationMs(ctx, musicUri!!); music.setMediaItem(MediaItem.fromUri(musicUri!!)); music.prepare() }
+            runCatching { musicDuration = durationMs(ctx, musicUri!!); music.setMediaItem(MediaItem.fromUri(musicUri!!)); music.prepare() }.onFailure { musicUri = null }
         }
     }
     LaunchedEffect(Unit) {
