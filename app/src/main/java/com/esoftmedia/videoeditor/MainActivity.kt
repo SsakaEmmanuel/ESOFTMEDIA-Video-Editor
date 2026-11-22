@@ -626,6 +626,7 @@ private fun HomeScreen(
     onDeleteDraft: (SavedProject) -> Unit,
     onQuickTool: (String) -> Unit
 ) {
+    var settingsOpen by remember { mutableStateOf(false) }
     Column(
         Modifier.fillMaxSize().background(Color(0xFF171717))
             .verticalScroll(rememberScrollState()).padding(horizontal = 18.dp)
@@ -638,7 +639,7 @@ private fun HomeScreen(
             }
             Spacer(Modifier.weight(1f))
             IconButton(onClick = { onQuickTool("Export") }) { Icon(Icons.Default.WorkspacePremium, "Premium tools", tint = Color(0xFFFFB36E), modifier = Modifier.size(27.dp)) }
-            IconButton(onClick = { }) { Icon(Icons.Default.Settings, "Settings", tint = Color.LightGray, modifier = Modifier.size(26.dp)) }
+            IconButton(onClick = { settingsOpen = true }) { Icon(Icons.Default.Settings, "Settings", tint = Color.LightGray, modifier = Modifier.size(26.dp)) }
         }
         Spacer(Modifier.height(24.dp))
         Box(
@@ -721,6 +722,14 @@ private fun HomeScreen(
         Spacer(Modifier.height(34.dp))
         Text("Projects stay on your phone", color = Color.Gray, fontSize = 12.sp, modifier = Modifier.align(Alignment.CenterHorizontally))
         Spacer(Modifier.height(18.dp))
+    }
+    if (settingsOpen) {
+        AlertDialog(
+            onDismissRequest = { settingsOpen = false },
+            title = { Text("Local editor settings") },
+            text = { Text("ESOFTMEDIA stores your drafts on this device. Imported videos remain in their original locations; rendered videos are saved to Movies/ESOFTMEDIA. No account or cloud upload is required.") },
+            confirmButton = { TextButton(onClick = { settingsOpen = false }) { Text("Close") } }
+        )
     }
 }
 
