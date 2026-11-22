@@ -67,10 +67,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-private val BG = Color(0xFF090A0F)
-private val CARD = Color(0xFF151720)
-private val AQUA = Color(0xFF00E5D4)
-private val VIOLET = Color(0xFF7B2CFF)
+private val BG = Color(0xFF0D0D10)
+private val CARD = Color(0xFF19191E)
+private val AQUA = Color(0xFFFF3F73)
+private val VIOLET = Color(0xFFFF7958)
 private val PAPER = Color(0xFFF7F7FA)
 
 data class VideoClip(val id: String, val uri: Uri, val duration: Long, val start: Long = 0L, val end: Long = duration) {
@@ -790,84 +790,105 @@ private fun HomeScreen(
 ) {
     var settingsOpen by remember { mutableStateOf(false) }
     Column(
-        Modifier.fillMaxSize().background(Color(0xFF171717))
+        Modifier.fillMaxSize().background(BG)
             .verticalScroll(rememberScrollState()).padding(horizontal = 18.dp)
     ) {
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(22.dp))
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column {
-                Text("ESOFTMEDIA", color = PAPER, fontSize = 25.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.2.sp)
-                Text("VIDEO STUDIO", color = Color(0xFFFF8A72), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+                Text("ESOFTMEDIA", color = PAPER, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.25.sp)
+                Text("VIDEO STUDIO", color = AQUA, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.2.sp)
             }
             Spacer(Modifier.weight(1f))
-            IconButton(onClick = { onQuickTool("Export") }) { Icon(Icons.Default.WorkspacePremium, "Premium tools", tint = Color(0xFFFFB36E), modifier = Modifier.size(27.dp)) }
-            IconButton(onClick = { settingsOpen = true }) { Icon(Icons.Default.Settings, "Settings", tint = Color.LightGray, modifier = Modifier.size(26.dp)) }
+            IconButton(onClick = { onQuickTool("Export") }) {
+                Icon(Icons.Default.WorkspacePremium, "Studio tools", tint = VIOLET, modifier = Modifier.size(25.dp))
+            }
+            IconButton(onClick = { settingsOpen = true }) {
+                Icon(Icons.Default.Settings, "Settings", tint = Color(0xFFD4D4D8), modifier = Modifier.size(24.dp))
+            }
         }
-        Spacer(Modifier.height(24.dp))
+
+        Spacer(Modifier.height(22.dp))
         Box(
-            Modifier.fillMaxWidth().height(138.dp)
-                .clip(RoundedCornerShape(17.dp))
-                .background(Brush.horizontalGradient(listOf(Color(0xFFFFC46E), Color(0xFFFF7E65), Color(0xFFF53F68))))
+            Modifier.fillMaxWidth().height(132.dp)
+                .clip(RoundedCornerShape(18.dp))
+                .background(Brush.horizontalGradient(listOf(Color(0xFFFFC66D), Color(0xFFFF865F), Color(0xFFFF3F73))))
                 .clickable(onClick = onNewProject),
             contentAlignment = Alignment.Center
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(Icons.Default.AddCircle, null, tint = Color.White, modifier = Modifier.size(43.dp))
-                Spacer(Modifier.height(7.dp))
-                Text("New Project", color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
+                Icon(Icons.Default.AddCircle, null, tint = Color.White, modifier = Modifier.size(42.dp))
+                Spacer(Modifier.height(6.dp))
+                Text("New Project", color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(2.dp))
+                Text("Create a video from your gallery", color = Color.White.copy(alpha = .92f), fontSize = 10.sp)
             }
         }
-        Spacer(Modifier.height(18.dp))
+
+        Spacer(Modifier.height(22.dp))
+        Text("QUICK TOOLS", color = Color(0xFF9B9BA3), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.8.sp)
+        Spacer(Modifier.height(12.dp))
         val tools = listOf(
             Triple("Enhance", Icons.Default.HighQuality, "Adjust"),
-            Triple("Captions", Icons.Default.Subtitles, "Text"),
             Triple("Filters", Icons.Default.FilterVintage, "Filters"),
             Triple("Trim", Icons.Default.ContentCut, "Edit"),
             Triple("Music", Icons.Default.MusicNote, "Audio"),
-            Triple("Crop", Icons.Default.Crop, "Crop")
+            Triple("Captions", Icons.Default.Subtitles, "Text"),
+            Triple("Crop", Icons.Default.Crop, "Crop"),
+            Triple("Effects", Icons.Default.AutoAwesome, "Effects")
         )
-        tools.chunked(3).forEach { rowTools ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-                rowTools.forEach { item ->
-                    Column(
-                        Modifier.weight(1f).height(82.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFF282828))
-                            .clickable { onQuickTool(item.third) }
-                            .padding(9.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(13.dp)
+        ) {
+            tools.forEachIndexed { index, item ->
+                Column(
+                    Modifier.width(64.dp).clickable { onQuickTool(item.third) },
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Box(
+                        Modifier.size(54.dp).clip(CircleShape)
+                            .background(Color(0xFF202025))
+                            .border(1.dp, Color(0xFF303037), CircleShape),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Icon(item.second, null, tint = Color.White, modifier = Modifier.size(30.dp))
-                        Spacer(Modifier.height(5.dp))
-                        Text(item.first, color = Color.LightGray, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                        Icon(item.second, item.first, tint = if (index == 0) VIOLET else Color(0xFFF0F0F3), modifier = Modifier.size(25.dp))
                     }
+                    Spacer(Modifier.height(7.dp))
+                    Text(item.first, color = Color(0xFFB9B9C1), fontSize = 10.sp, maxLines = 1)
                 }
             }
-            Spacer(Modifier.height(9.dp))
         }
-        Spacer(Modifier.height(12.dp))
+
+        Spacer(Modifier.height(25.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Drafts", color = PAPER, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.width(5.dp))
-            Icon(Icons.Default.Info, null, tint = Color.Gray, modifier = Modifier.size(15.dp))
+            Column {
+                Text("Drafts", color = PAPER, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text("Pick up where you left off", color = Color(0xFF8C8C95), fontSize = 10.sp)
+            }
             Spacer(Modifier.weight(1f))
-            Icon(Icons.Default.ViewModule, null, tint = Color.LightGray)
+            Icon(Icons.Default.ViewModule, null, tint = Color(0xFFB9B9C1), modifier = Modifier.size(21.dp))
         }
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(13.dp))
         if (drafts.isEmpty()) {
             Column(
-                Modifier.fillMaxWidth().padding(vertical = 32.dp),
+                Modifier.fillMaxWidth().padding(vertical = 35.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Icon(Icons.Default.VideoLibrary, null, tint = Color.Gray, modifier = Modifier.size(42.dp))
-                Spacer(Modifier.height(8.dp))
-                Text("Your projects will appear here", color = Color.LightGray, fontSize = 13.sp)
-                Text("Create a new project to get started", color = Color.Gray, fontSize = 11.sp)
+                Box(
+                    Modifier.size(66.dp).clip(CircleShape).background(Color(0xFF1E1E24)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.VideoLibrary, null, tint = Color(0xFF9B9BA3), modifier = Modifier.size(30.dp))
+                }
+                Spacer(Modifier.height(11.dp))
+                Text("Your projects will appear here", color = Color(0xFFE0E0E4), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(4.dp))
+                Text("Create a new project to get started", color = Color(0xFF85858E), fontSize = 11.sp)
             }
         } else {
             drafts.chunked(3).forEach { rowDrafts ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(9.dp)) {
                     rowDrafts.forEach { draft ->
                         DraftCard(
                             draft = draft,
@@ -881,9 +902,9 @@ private fun HomeScreen(
                 Spacer(Modifier.height(10.dp))
             }
         }
-        Spacer(Modifier.height(34.dp))
-        Text("Projects stay on your phone", color = Color.Gray, fontSize = 12.sp, modifier = Modifier.align(Alignment.CenterHorizontally))
-        Spacer(Modifier.height(18.dp))
+        Spacer(Modifier.height(28.dp))
+        Text("Your projects stay safely on this phone", color = Color(0xFF777780), fontSize = 10.sp, modifier = Modifier.align(Alignment.CenterHorizontally))
+        Spacer(Modifier.height(20.dp))
     }
     if (settingsOpen) {
         AlertDialog(
@@ -899,17 +920,22 @@ private fun HomeScreen(
 private fun DraftCard(draft: SavedProject, modifier: Modifier, onOpen: () -> Unit, onDelete: () -> Unit) {
     var menuOpen by remember { mutableStateOf(false) }
     Box(
-        modifier.height(150.dp).clip(RoundedCornerShape(9.dp))
-            .background(Color(0xFF2A2A2A)).clickable(onClick = onOpen)
+        modifier.height(148.dp).clip(RoundedCornerShape(13.dp))
+            .background(Color(0xFF24242A)).clickable(onClick = onOpen)
     ) {
         FrameThumbnail(draft.previewUri, Modifier.fillMaxSize())
-        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = .78f)))))
-        Column(Modifier.align(Alignment.BottomStart).padding(start = 8.dp, bottom = 8.dp, end = 6.dp)) {
-            Text(draft.name, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(time(draft.durationMs), color = Color.White, fontSize = 10.sp)
+        Box(
+            Modifier.fillMaxSize().background(
+                Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = .83f)))
+            )
+        )
+        Column(Modifier.align(Alignment.BottomStart).padding(start = 8.dp, bottom = 9.dp, end = 5.dp)) {
+            Text(draft.name, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(2.dp))
+            Text(time(draft.durationMs), color = Color(0xFFE0E0E4), fontSize = 9.sp)
         }
-        IconButton(onClick = { menuOpen = true }, modifier = Modifier.align(Alignment.BottomEnd).size(31.dp)) {
-            Icon(Icons.Default.MoreHoriz, "Draft options", tint = Color.White, modifier = Modifier.size(21.dp))
+        IconButton(onClick = { menuOpen = true }, modifier = Modifier.align(Alignment.TopEnd).size(31.dp)) {
+            Icon(Icons.Default.MoreHoriz, "Draft options", tint = Color.White, modifier = Modifier.size(20.dp))
         }
         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
             DropdownMenuItem(text = { Text("Open project") }, onClick = { menuOpen = false; onOpen() })
@@ -954,32 +980,73 @@ private fun FrameThumbnail(uriText: String?, modifier: Modifier = Modifier) {
 
 @Composable
 private fun EditorTopBar(title: String, onClose: () -> Unit, onHelp: () -> Unit, onExport: () -> Unit) {
-    Row(Modifier.fillMaxWidth().height(58.dp).background(Color(0xFF101116)).padding(horizontal = 9.dp), verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = onClose, modifier = Modifier.size(42.dp)) { Icon(Icons.Default.ArrowBack, "Close editor", tint = Color.White, modifier = Modifier.size(23.dp)) }
-        Column(Modifier.weight(1f)) {
-            Text(title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text("VIDEO EDITOR", color = Color(0xFF9B96A5), fontSize = 8.sp, letterSpacing = 1.5.sp)
+    Row(
+        Modifier.fillMaxWidth().height(58.dp).background(BG).padding(horizontal = 9.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconButton(onClick = onClose, modifier = Modifier.size(42.dp)) {
+            Icon(Icons.Default.ArrowBack, "Close editor", tint = Color.White, modifier = Modifier.size(22.dp))
         }
-        IconButton(onClick = onHelp, modifier = Modifier.size(40.dp)) { Icon(Icons.Default.HelpOutline, "Help", tint = Color(0xFFB8B3C1), modifier = Modifier.size(21.dp)) }
-        Button(onClick = onExport, shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF4F79)), contentPadding = PaddingValues(horizontal = 15.dp, vertical = 7.dp)) {
-            Icon(Icons.Default.FileUpload, null, modifier = Modifier.size(17.dp)); Spacer(Modifier.width(5.dp)); Text("Export", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+        Column(Modifier.weight(1f)) {
+            Text(title, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("ESOFTMEDIA  •  STUDIO", color = Color(0xFF9898A1), fontSize = 8.sp, letterSpacing = 1.3.sp)
+        }
+        IconButton(onClick = onHelp, modifier = Modifier.size(39.dp)) {
+            Icon(Icons.Default.HelpOutline, "Help", tint = Color(0xFFC6C6CD), modifier = Modifier.size(20.dp))
+        }
+        Button(
+            onClick = onExport,
+            shape = RoundedCornerShape(12.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = AQUA),
+            contentPadding = PaddingValues(horizontal = 13.dp, vertical = 7.dp)
+        ) {
+            Icon(Icons.Default.FileUpload, null, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(5.dp))
+            Text("Export", fontSize = 11.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
 
 @Composable
 private fun EditorTools(active: String, onTool: (String) -> Unit) {
-    val tools = listOf("Trim" to Icons.Default.ContentCut, "Filter" to Icons.Default.FilterVintage, "Enhance" to Icons.Default.Tune, "Captions" to Icons.Default.Subtitles, "Speed" to Icons.Default.Speed, "Animation" to Icons.Default.Animation, "Crop" to Icons.Default.Crop, "BG" to Icons.Default.Layers, "Mosaic" to Icons.Default.BlurOn, "Music" to Icons.Default.MusicNote, "Text" to Icons.Default.TextFields, "Sticker" to Icons.Default.EmojiEmotions, "Effect" to Icons.Default.AutoAwesome, "Volume" to Icons.Default.VolumeUp, "Rotate" to Icons.Default.RotateRight, "Flip" to Icons.Default.Flip)
-    Row(Modifier.fillMaxWidth().height(82.dp).background(Color(0xFF101116)).horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp, vertical = 7.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+    val tools = listOf(
+        "Trim" to Icons.Default.ContentCut, "Filter" to Icons.Default.FilterVintage,
+        "Enhance" to Icons.Default.Tune, "Captions" to Icons.Default.Subtitles,
+        "Speed" to Icons.Default.Speed, "Animation" to Icons.Default.Animation,
+        "Crop" to Icons.Default.Crop, "BG" to Icons.Default.Layers,
+        "Mosaic" to Icons.Default.BlurOn, "Music" to Icons.Default.MusicNote,
+        "Text" to Icons.Default.TextFields, "Sticker" to Icons.Default.EmojiEmotions,
+        "Effect" to Icons.Default.AutoAwesome, "Volume" to Icons.Default.VolumeUp,
+        "Rotate" to Icons.Default.RotateRight, "Flip" to Icons.Default.Flip
+    )
+    Row(
+        Modifier.fillMaxWidth().height(88.dp).background(BG)
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 9.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
         tools.forEach { (name, icon) ->
             val selected = name == active
-            Column(Modifier.width(60.dp).clip(RoundedCornerShape(13.dp)).background(if (selected) Color(0xFF34202B) else Color(0xFF1D1B23)).border(if (selected) 1.dp else 0.dp, if (selected) Color(0xFFFF4F79) else Color.Transparent, RoundedCornerShape(13.dp)).clickable { onTool(name) }.padding(vertical = 7.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(icon, null, tint = if (selected) Color(0xFFFF7292) else Color(0xFFB9B5C1), modifier = Modifier.size(23.dp))
-                Spacer(Modifier.height(4.dp)); Text(name, color = if (selected) Color.White else Color(0xFFB9B5C1), fontSize = 9.sp, maxLines = 1)
+            Column(
+                Modifier.width(51.dp).clickable { onTool(name) },
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(
+                    Modifier.size(43.dp).clip(CircleShape)
+                        .background(if (selected) Color(0xFF3A1E29) else Color(0xFF1D1D22))
+                        .border(if (selected) 1.dp else 0.dp, if (selected) AQUA else Color.Transparent, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(icon, null, tint = if (selected) AQUA else Color(0xFFE1E1E6), modifier = Modifier.size(21.dp))
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(name, color = if (selected) Color.White else Color(0xFFB4B4BC), fontSize = 9.sp, maxLines = 1)
             }
         }
     }
 }
+
 @Composable
 private fun EditToolPanel(
     clip: VideoClip?,
@@ -994,7 +1061,7 @@ private fun EditToolPanel(
 ) {
     Column(
         Modifier.fillMaxWidth().heightIn(max = 145.dp)
-            .background(Color(0xFF292929)).padding(horizontal = 11.dp, vertical = 6.dp)
+            .background(Color(0xFF17171C)).padding(horizontal = 11.dp, vertical = 6.dp)
     ) {
         if (clip == null) {
             Text("Import a clip to start trimming", color = Color.LightGray, fontSize = 11.sp)
@@ -1220,8 +1287,8 @@ private fun Preview(
                 Text(
                     caption, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold,
                     modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp)
-                        .background(Color.Black.copy(alpha = .45f), RoundedCornerShape(5.dp))
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                        .background(Color.Black.copy(alpha = .52f), RoundedCornerShape(7.dp))
+                        .padding(horizontal = 9.dp, vertical = 5.dp)
                 )
             }
         } else {
@@ -1230,14 +1297,31 @@ private fun Preview(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                Icon(Icons.Default.PlayCircleFilled, null, tint = AQUA, modifier = Modifier.size(56.dp))
-                Spacer(Modifier.height(8.dp))
-                Text("Tap to import videos", color = PAPER, fontSize = 16.sp)
+                Box(
+                    Modifier.size(66.dp).clip(CircleShape)
+                        .background(Brush.horizontalGradient(listOf(AQUA, VIOLET))),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Add, null, tint = Color.White, modifier = Modifier.size(34.dp))
+                }
+                Spacer(Modifier.height(10.dp))
+                Text("Add videos to your project", color = PAPER, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Text("Select clips from your gallery to begin", color = Color(0xFF9C9CA5), fontSize = 10.sp)
             }
         }
-        Text("PREVIEW", color = Color(0xFFBDBDBD), fontSize = 10.sp, modifier = Modifier.align(Alignment.TopStart).padding(10.dp))
-        IconButton(onClick = onImport, modifier = Modifier.align(Alignment.TopEnd)) {
-            Icon(Icons.Default.Add, "Add video", tint = Color.White, modifier = Modifier.size(27.dp))
+        Surface(
+            modifier = Modifier.align(Alignment.TopStart).padding(10.dp),
+            color = Color.Black.copy(alpha = .62f),
+            shape = RoundedCornerShape(6.dp)
+        ) {
+            Text("PREVIEW", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp))
+        }
+        IconButton(
+            onClick = onImport,
+            modifier = Modifier.align(Alignment.TopEnd).padding(5.dp)
+                .size(35.dp).clip(CircleShape).background(Color.Black.copy(alpha = .52f))
+        ) {
+            Icon(Icons.Default.Add, "Add video", tint = Color.White, modifier = Modifier.size(24.dp))
         }
     }
 }
@@ -1258,7 +1342,7 @@ private fun PlaybackBar(
     redo: () -> Unit
 ) {
     Column(
-        Modifier.fillMaxWidth().background(Color(0xFF242424)).padding(horizontal = 8.dp, vertical = 3.dp)
+        Modifier.fillMaxWidth().background(Color(0xFF101014)).padding(horizontal = 8.dp, vertical = 4.dp)
     ) {
         Row(
             Modifier.fillMaxWidth().height(43.dp),
@@ -1267,7 +1351,7 @@ private fun PlaybackBar(
         ) {
             IconButton(onClick = previous, modifier = Modifier.size(38.dp)) { Icon(Icons.Default.SkipPrevious, "Previous clip", tint = Color.White, modifier = Modifier.size(24.dp)) }
             IconButton(onClick = stop, modifier = Modifier.size(38.dp)) { Icon(Icons.Default.Stop, "Stop", tint = Color.White, modifier = Modifier.size(23.dp)) }
-            IconButton(onClick = toggle, modifier = Modifier.size(48.dp).background(VIOLET, CircleShape)) {
+            IconButton(onClick = toggle, modifier = Modifier.size(48.dp).background(Brush.horizontalGradient(listOf(AQUA, VIOLET)), CircleShape)) {
                 Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, "Play or pause", tint = Color.White, modifier = Modifier.size(29.dp))
             }
             Text(time(position) + " / " + time(duration), color = Color.LightGray, fontSize = 11.sp)
@@ -1283,7 +1367,7 @@ private fun PlaybackBar(
                 modifier = Modifier.fillMaxWidth().height(22.dp),
                 colors = SliderDefaults.colors(
                     thumbColor = Color.White,
-                    activeTrackColor = Color(0xFFDE3D65),
+                    activeTrackColor = AQUA,
                     inactiveTrackColor = Color(0xFF565656)
                 )
             )
@@ -1305,7 +1389,7 @@ private fun TimelinePanel(
     onRemoveAudio: () -> Unit
 ) {
     Column(
-        Modifier.fillMaxWidth().height(157.dp).background(Color(0xFF202020))
+        Modifier.fillMaxWidth().height(157.dp).background(Color(0xFF111115))
             .padding(horizontal = 8.dp, vertical = 5.dp)
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -1326,7 +1410,7 @@ private fun TimelinePanel(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                Icon(if (muted) Icons.Default.VolumeOff else Icons.Default.VolumeUp, null, tint = if (muted) Color(0xFFFF7890) else Color.LightGray, modifier = Modifier.size(23.dp))
+                Icon(if (muted) Icons.Default.VolumeOff else Icons.Default.VolumeUp, null, tint = if (muted) AQUA else Color.LightGray, modifier = Modifier.size(23.dp))
                 Text(if (muted) "Unmute clip" else "Clip audio", color = Color.LightGray, fontSize = 8.sp)
             }
             Box(Modifier.weight(1f).height(65.dp)) {
@@ -1338,8 +1422,8 @@ private fun TimelinePanel(
                     clips.forEachIndexed { index, clip ->
                         Box(
                             Modifier.width((clip.length / 1000f * 22f).coerceIn(82f, 190f).dp)
-                                .height(60.dp).clip(RoundedCornerShape(5.dp))
-                                .border(if (index == selectedIndex) 2.dp else 1.dp, if (index == selectedIndex) Color(0xFFFF4569) else Color(0xFF666666), RoundedCornerShape(5.dp))
+                                .height(60.dp).clip(RoundedCornerShape(8.dp))
+                                .border(if (index == selectedIndex) 2.dp else 1.dp, if (index == selectedIndex) AQUA else Color(0xFF494951), RoundedCornerShape(8.dp))
                                 .clickable { onSelect(index) }
                         ) {
                             FrameThumbnail(clip.uri.toString(), Modifier.fillMaxSize())
@@ -1347,8 +1431,8 @@ private fun TimelinePanel(
                         }
                     }
                     Box(
-                        Modifier.width(48.dp).height(60.dp).clip(RoundedCornerShape(6.dp))
-                            .background(Color(0xFF343434)).clickable(onClick = onAddClip),
+                        Modifier.width(48.dp).height(60.dp).clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF25252B)).clickable(onClick = onAddClip),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(Icons.Default.Add, "Add clip", tint = Color(0xFFFF4569), modifier = Modifier.size(30.dp))
@@ -1356,14 +1440,14 @@ private fun TimelinePanel(
                 }
                 Box(
                     Modifier.align(Alignment.Center).fillMaxHeight().width(2.dp)
-                        .background(Color(0xFFFF315F))
+                        .background(AQUA)
                 )
             }
         }
         Spacer(Modifier.height(5.dp))
         Row(
             Modifier.fillMaxWidth().height(37.dp).clip(RoundedCornerShape(5.dp))
-                .background(Color(0xFF303030)).clickable(onClick = if (hasAudio) onRemoveAudio else onAddAudio)
+                .background(Color(0xFF202026)).clickable(onClick = if (hasAudio) onRemoveAudio else onAddAudio)
                 .padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -1372,7 +1456,7 @@ private fun TimelinePanel(
             Text(audioLabel, color = if (hasAudio) Color.White else Color.LightGray, fontSize = 11.sp)
             Spacer(Modifier.weight(1f))
             if (!hasAudio) Icon(Icons.Default.Add, "Add audio", tint = Color.White, modifier = Modifier.size(18.dp))
-            else Text("REMOVE", color = Color(0xFFFF879B), fontSize = 8.sp)
+            else Text("REMOVE", color = AQUA, fontSize = 8.sp)
         }
     }
 }
