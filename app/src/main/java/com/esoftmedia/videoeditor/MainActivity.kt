@@ -539,13 +539,25 @@ fun VideoEditorApp() {
                                     if (split in (clip.start + 1L) until clip.end) {
                                         pushUndo(clips, undo, redo)
                                         clips[selectedIndex] = clip.copy(end = split)
-                                        clips.add(selectedIndex + 1, clip.copy(id = UUID.randomUUID().toString(), start = split))
+                                        val rightSegment = clip.copy(id = UUID.randomUUID().toString(), start = split)
+                                        clips.add(selectedIndex + 1, rightSegment)
+                                        clipStyles[clip.id]?.let { inheritedStyle ->
+                                            clipStyles = clipStyles + (rightSegment.id to inheritedStyle)
+                                        }
                                         status = "Clip split"
                                     } else Toast.makeText(ctx, "Move playhead inside the selected clip to split.", Toast.LENGTH_SHORT).show()
                                 }
                             },
                             {
-                                active?.let { pushUndo(clips, undo, redo); clips.add(selectedIndex + 1, it.copy(id = UUID.randomUUID().toString())); status = "Clip duplicated" }
+                                active?.let { clip ->
+                                    pushUndo(clips, undo, redo)
+                                    val duplicate = clip.copy(id = UUID.randomUUID().toString())
+                                    clips.add(selectedIndex + 1, duplicate)
+                                    clipStyles[clip.id]?.let { inheritedStyle ->
+                                        clipStyles = clipStyles + (duplicate.id to inheritedStyle)
+                                    }
+                                    status = "Clip duplicated with its styling"
+                                }
                             },
                             {
                                 if (active != null) {
@@ -1419,7 +1431,7 @@ private fun SpeedPanel(speed: Float, onSpeedChange: (Float) -> Unit, onCommit: (
             onSpeedChange(it.removeSuffix("x").toFloat())
             onCommit()
         }
-        Text("Playback speed is stored on this clip. Export renders the selected speed; original audio timing may need a separate audio-stretch pass.", color = Color.LightGray, fontSize = 9.sp)
+        Text("Playback speed is stored per clip. The original clip audio is muted on speed-changed exports to prevent audio drift; add a music track for sound.", color = Color.LightGray, fontSize = 9.sp)
     }
 }
 
