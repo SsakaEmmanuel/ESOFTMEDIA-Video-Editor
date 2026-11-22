@@ -49,6 +49,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.C
 import androidx.media3.common.Effect
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
+import androidx.media3.common.PlaybackException
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.effect.*
 import androidx.media3.transformer.*
@@ -179,7 +181,22 @@ fun VideoEditorApp() {
         }
     }
 
-    DisposableEffect(Unit) { onDispose { player.release(); music.release() } }
+    DisposableEffect(Unit) {
+        val playerListener = object : Player.Listener {
+            override fun onPlayerError(error: PlaybackException) {
+                player.pause()
+                music.pause()
+                status = "This video could not be decoded"
+                Toast.makeText(ctx, "Playback failed for this file. Try another video format.", Toast.LENGTH_LONG).show()
+            }
+        }
+        player.addListener(playerListener)
+        onDispose {
+            player.removeListener(playerListener)
+            player.release()
+            music.release()
+        }
+    }
 
     LaunchedEffect(clips.map { it.id + ":" + it.start + ":" + it.end }) {
         if (clips.isEmpty()) player.clearMediaItems() else {
@@ -406,6 +423,8 @@ fun VideoEditorApp() {
                         onAddAudio = { chooseAudio.launch(arrayOf("audio/*")) },
                         hasAudio = musicUri != null,
                         audioLabel = if (musicUri == null) "Add audio" else "Music track added",
+                        muted = muteOriginal,
+                        onToggleMute = { muteOriginal = !muteOriginal },
                         onRemoveAudio = { musicUri = null; musicDuration = 0L; music.stop(); status = "Music removed" }
                     )
                     when (tab) {
@@ -737,7 +756,16 @@ private fun FrameThumbnail(uriText: String?, modifier: Modifier = Modifier) {
                 val retriever = MediaMetadataRetriever()
                 try {
                     retriever.setDataSource(context, Uri.parse(uriText))
-                    retriever.getFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                    if (Build.VERSION.SDK_INT >= 27) {
+                        retriever.getScaledFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 160, 90)
+                    } else {
+                        val frame = retriever.getFrameAtTime(0L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                        if (frame != null && frame.width > 160) {
+                            val scaled = Bitmap.createScaledBitmap(frame, 160, 90, true)
+                            if (scaled !== frame) frame.recycle()
+                            scaled
+                        } else frame
+                    }
                 } finally {
                     retriever.release()
                 }
@@ -1055,12 +1083,12 @@ private fun TimelinePanel(
         Spacer(Modifier.height(4.dp))
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(
-                Modifier.width(62.dp).height(65.dp).clickable { },
+                Modifier.width(62.dp).height(65.dp).clickable(onClick = onToggleMute),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                Icon(Icons.Default.VolumeUp, null, tint = Color.LightGray, modifier = Modifier.size(23.dp))
-                Text("Clip audio", color = Color.LightGray, fontSize = 8.sp)
+                Icon(if (muted) Icons.Default.VolumeOff else Icons.Default.VolumeUp, null, tint = if (muted) Color(0xFFFF7890) else Color.LightGray, modifier = Modifier.size(23.dp))
+                Text(if (muted) "Unmute clip" else "Clip audio", color = Color.LightGray, fontSize = 8.sp)
             }
             Box(Modifier.weight(1f).height(65.dp)) {
                 Row(
