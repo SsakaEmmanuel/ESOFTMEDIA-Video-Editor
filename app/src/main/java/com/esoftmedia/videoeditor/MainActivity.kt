@@ -135,34 +135,6 @@ fun VideoEditorApp() {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var pendingExportFile by remember { mutableStateOf<File?>(null) }
-    val saveExportDocument = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("video/mp4")) { destination ->
-        val source = pendingExportFile
-        pendingExportFile = null
-        if (destination == null || source == null) {
-            source?.delete()
-            status = "Export cancelled"
-        } else {
-            scope.launch(Dispatchers.IO) {
-                runCatching {
-                    ctx.contentResolver.openOutputStream(destination)?.use { output ->
-                        source.inputStream().use { input -> input.copyTo(output) }
-                    } ?: error("Cannot open destination")
-                    source.delete()
-                }.onSuccess {
-                    withContext(Dispatchers.Main) {
-                        status = "Export complete • Saved to selected location"
-                        Toast.makeText(ctx, "Video exported successfully", Toast.LENGTH_LONG).show()
-                    }
-                }.onFailure { error ->
-                    source.delete()
-                    withContext(Dispatchers.Main) {
-                        status = "Save failed: " + (error.message ?: "Unknown error")
-                        Toast.makeText(ctx, status, Toast.LENGTH_LONG).show()
-                    }
-                }
-            }
-        }
-    }
     val player = remember { ExoPlayer.Builder(ctx).build() }
     val music = remember { ExoPlayer.Builder(ctx).build() }
     val clips = remember { mutableStateListOf<VideoClip>() }
@@ -192,6 +164,34 @@ fun VideoEditorApp() {
     var fps by remember { mutableIntStateOf(30) }
     var favorite by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf("Ready • Offline") }
+    val saveExportDocument = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("video/mp4")) { destination ->
+        val source = pendingExportFile
+        pendingExportFile = null
+        if (destination == null || source == null) {
+            source?.delete()
+            status = "Export cancelled"
+        } else {
+            scope.launch(Dispatchers.IO) {
+                runCatching {
+                    ctx.contentResolver.openOutputStream(destination)?.use { output ->
+                        source.inputStream().use { input -> input.copyTo(output) }
+                    } ?: error("Cannot open destination")
+                    source.delete()
+                }.onSuccess {
+                    withContext(Dispatchers.Main) {
+                        status = "Export complete • Saved to selected location"
+                        Toast.makeText(ctx, "Video exported successfully", Toast.LENGTH_LONG).show()
+                    }
+                }.onFailure { error ->
+                    source.delete()
+                    withContext(Dispatchers.Main) {
+                        status = "Save failed: " + (error.message ?: "Unknown error")
+                        Toast.makeText(ctx, status, Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
+    }
     var exporting by remember { mutableStateOf(false) }
     var trimA by remember { mutableFloatStateOf(0f) }
     var trimB by remember { mutableFloatStateOf(0f) }
