@@ -474,7 +474,7 @@ fun VideoEditorApp() {
                             tab = "Export"
                         }
                     )
-                    Preview(player, clips.isNotEmpty(), caption, Modifier.weight(1f).fillMaxWidth(), previewBackground(committedStyle.background)) {
+                    Preview(player, clips.isNotEmpty(), caption, Modifier.fillMaxWidth().height(218.dp), previewBackground(committedStyle.background)) {
                         chooseVideos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
                     }
                     PlaybackBar(
@@ -514,6 +514,15 @@ fun VideoEditorApp() {
                     TimelinePanel(
                         clips = clips,
                         selectedIndex = selectedIndex,
+                        position = position,
+                        duration = clips.sumOf { it.length },
+                        onSeek = { targetPosition ->
+                            var remaining = targetPosition.coerceAtLeast(0L)
+                            val targetIndex = clips.indexOfFirst { clip ->
+                                if (remaining <= clip.length) true else { remaining -= clip.length; false }
+                            }
+                            if (targetIndex >= 0) player.seekTo(targetIndex, remaining)
+                        },
                         onSelect = { index ->
                             selectedIndex = index
                             tab = "Edit"
@@ -981,7 +990,7 @@ private fun FrameThumbnail(uriText: String?, modifier: Modifier = Modifier) {
 @Composable
 private fun EditorTopBar(title: String, onClose: () -> Unit, onHelp: () -> Unit, onExport: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().height(58.dp).background(BG).padding(horizontal = 9.dp),
+        Modifier.fillMaxWidth().statusBarsPadding().height(58.dp).background(BG).padding(horizontal = 9.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconButton(onClick = onClose, modifier = Modifier.size(42.dp)) {
@@ -1379,6 +1388,9 @@ private fun PlaybackBar(
 private fun TimelinePanel(
     clips: List<VideoClip>,
     selectedIndex: Int,
+    position: Long,
+    duration: Long,
+    onSeek: (Long) -> Unit,
     onSelect: (Int) -> Unit,
     onAddClip: () -> Unit,
     onAddAudio: () -> Unit,
@@ -1388,75 +1400,126 @@ private fun TimelinePanel(
     onToggleMute: () -> Unit,
     onRemoveAudio: () -> Unit
 ) {
+    val safeDuration = duration.coerceAtLeast(1L)
+    val playheadFraction = (position.toFloat() / safeDuration.toFloat()).coerceIn(0f, 1f)
     Column(
-        Modifier.fillMaxWidth().height(157.dp).background(Color(0xFF111115))
-            .padding(horizontal = 8.dp, vertical = 5.dp)
+        Modifier.fillMaxWidth().height(154.dp).background(Color(0xFF111115))
+            .padding(horizontal = 9.dp, vertical = 5.dp)
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("0:00", color = Color.LightGray, fontSize = 9.sp)
-            Spacer(Modifier.width(35.dp))
-            Text("0:02", color = Color.Gray, fontSize = 9.sp)
-            Spacer(Modifier.width(35.dp))
-            Text("0:04", color = Color.Gray, fontSize = 9.sp)
-            Spacer(Modifier.width(35.dp))
-            Text("0:06", color = Color.Gray, fontSize = 9.sp)
+            Text(time(position), color = AQUA, fontSize = 10.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.weight(1f))
-            Text(clips.size.toString() + " clip(s)", color = Color.Gray, fontSize = 9.sp)
+            Text(time(duration), color = Color(0xFF9B9BA3), fontSize = 10.sp)
+            Spacer(Modifier.width(10.dp))
+            Text("${clips.size} clip${if (clips.size == 1) "" else "s"}", color = Color.Gray, fontSize = 9.sp)
         }
-        Spacer(Modifier.height(4.dp))
+        Spacer(Modifier.height(5.dp))
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(
-                Modifier.width(62.dp).height(65.dp).clickable(onClick = onToggleMute),
+                Modifier.width(54.dp).height(68.dp).clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFF1D1D22)).clickable(onClick = onToggleMute),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
                 Icon(if (muted) Icons.Default.VolumeOff else Icons.Default.VolumeUp, null, tint = if (muted) AQUA else Color.LightGray, modifier = Modifier.size(23.dp))
-                Text(if (muted) "Unmute clip" else "Clip audio", color = Color.LightGray, fontSize = 8.sp)
+                Text(if (muted) "Muted" else "Clip audio", color = Color.LightGray, fontSize = 8.sp)
             }
-            Box(Modifier.weight(1f).height(65.dp)) {
-                Row(
-                    Modifier.fillMaxSize().horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(3.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    clips.forEachIndexed { index, clip ->
-                        Box(
-                            Modifier.width((clip.length / 1000f * 22f).coerceIn(82f, 190f).dp)
-                                .height(60.dp).clip(RoundedCornerShape(8.dp))
-                                .border(if (index == selectedIndex) 2.dp else 1.dp, if (index == selectedIndex) AQUA else Color(0xFF494951), RoundedCornerShape(8.dp))
-                                .clickable { onSelect(index) }
-                        ) {
-                            FrameThumbnail(clip.uri.toString(), Modifier.fillMaxSize())
-                            Box(Modifier.fillMaxSize().background(if (index == selectedIndex) Color.Transparent else Color.Black.copy(alpha = .12f)))
+            Spacer(Modifier.width(6.dp))
+            BoxWithConstraints(Modifier.weight(1f).height(68.dp)) {
+                val addWidth = 48.dp
+                val stripWidth = (maxWidth - addWidth).coerceAtLeast(30.dp)
+                Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.width(stripWidth).height(64.dp)) {
+                        Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                            clips.forEachIndexed { index, clip ->
+                                Box(
+                                    Modifier.weight(clip.length.toFloat().coerceAtLeast(1f))
+                                        .fillMaxHeight().clip(RoundedCornerShape(6.dp))
+                                        .border(if (index == selectedIndex) 2.dp else 1.dp,
+                                            if (index == selectedIndex) AQUA else Color(0xFF404047), RoundedCornerShape(6.dp))
+                                        .clickable { onSelect(index) }
+                                ) {
+                                    ClipFilmstrip(clip, Modifier.fillMaxSize())
+                                    if (index != selectedIndex) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .12f)))
+                                }
+                            }
+                            if (clips.isEmpty()) {
+                                Box(Modifier.fillMaxSize().background(Color(0xFF25252B)), contentAlignment = Alignment.Center) {
+                                    Text("Import a video", color = Color.Gray, fontSize = 10.sp)
+                                }
+                            }
+                        }
+                        if (clips.isNotEmpty()) {
+                            Box(
+                                Modifier.offset(x = (stripWidth * playheadFraction).coerceIn(0.dp, stripWidth - 2.dp))
+                                    .fillMaxHeight().width(2.dp).background(Color.White)
+                            )
+                            Box(
+                                Modifier.offset(x = (stripWidth * playheadFraction - 4.dp).coerceIn(0.dp, stripWidth - 8.dp))
+                                    .align(Alignment.TopCenter).size(8.dp).clip(CircleShape).background(AQUA)
+                            )
                         }
                     }
                     Box(
-                        Modifier.width(48.dp).height(60.dp).clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFF25252B)).clickable(onClick = onAddClip),
+                        Modifier.width(addWidth).fillMaxHeight().padding(start = 4.dp)
+                            .clip(RoundedCornerShape(9.dp)).background(Color(0xFF25252B))
+                            .border(1.dp, Color(0xFF3B3B43), RoundedCornerShape(9.dp))
+                            .clickable(onClick = onAddClip),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(Icons.Default.Add, "Add clip", tint = Color(0xFFFF4569), modifier = Modifier.size(30.dp))
+                        Icon(Icons.Default.Add, "Add another video", tint = AQUA, modifier = Modifier.size(30.dp))
                     }
                 }
-                Box(
-                    Modifier.align(Alignment.Center).fillMaxHeight().width(2.dp)
-                        .background(AQUA)
-                )
             }
         }
-        Spacer(Modifier.height(5.dp))
+        Spacer(Modifier.height(6.dp))
         Row(
-            Modifier.fillMaxWidth().height(37.dp).clip(RoundedCornerShape(5.dp))
+            Modifier.fillMaxWidth().height(34.dp).clip(RoundedCornerShape(8.dp))
                 .background(Color(0xFF202026)).clickable(onClick = if (hasAudio) onRemoveAudio else onAddAudio)
-                .padding(horizontal = 8.dp),
+                .padding(horizontal = 9.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(Icons.Default.MusicNote, null, tint = Color.LightGray, modifier = Modifier.size(17.dp))
             Spacer(Modifier.width(7.dp))
             Text(audioLabel, color = if (hasAudio) Color.White else Color.LightGray, fontSize = 11.sp)
             Spacer(Modifier.weight(1f))
-            if (!hasAudio) Icon(Icons.Default.Add, "Add audio", tint = Color.White, modifier = Modifier.size(18.dp))
-            else Text("REMOVE", color = AQUA, fontSize = 8.sp)
+            if (!hasAudio) Icon(Icons.Default.Add, "Add audio", tint = AQUA, modifier = Modifier.size(18.dp))
+            else Text("REMOVE", color = AQUA, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun ClipFilmstrip(clip: VideoClip, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val frames by produceState<List<Bitmap>>(initialValue = emptyList(), key1 = clip.uri.toString(), key2 = clip.start, key3 = clip.end) {
+        value = withContext(Dispatchers.IO) {
+            runCatching {
+                val retriever = MediaMetadataRetriever()
+                try {
+                    retriever.setDataSource(context, clip.uri)
+                    val count = 5
+                    (0 until count).mapNotNull { index ->
+                        val fraction = (index + 0.5f) / count
+                        val sourceMs = clip.start + (clip.length * fraction).toLong()
+                        val raw = retriever.getFrameAtTime(sourceMs * 1000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                        if (raw == null) null else {
+                            val scaled = Bitmap.createScaledBitmap(raw, 160, 90, true)
+                            if (scaled !== raw) raw.recycle()
+                            scaled
+                        }
+                    }
+                } finally { retriever.release() }
+            }.getOrDefault(emptyList())
+        }
+    }
+    if (frames.isEmpty()) {
+        FrameThumbnail(clip.uri.toString(), modifier)
+    } else {
+        Row(modifier, horizontalArrangement = Arrangement.spacedBy(1.dp)) {
+            frames.forEach { frame ->
+                Image(frame.asImageBitmap(), "Video timeline frame", Modifier.weight(1f).fillMaxHeight(), contentScale = ContentScale.Crop)
+            }
         }
     }
 }
