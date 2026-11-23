@@ -1512,6 +1512,7 @@ private fun TimelinePanel(
     onRemoveAudio: () -> Unit
 ) {
     val safeDuration = duration.coerceAtLeast(1L)
+    val latestSelectedIndex = rememberUpdatedState(selectedIndex)
     val playheadFraction = (position.toFloat() / safeDuration.toFloat()).coerceIn(0f, 1f)
     Column(
         Modifier.fillMaxWidth().height(154.dp).background(Color(0xFF111115))
@@ -1542,13 +1543,13 @@ private fun TimelinePanel(
                 Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         Modifier.width(stripWidth).height(64.dp)
-                            .pointerInput(clips, safeDuration, selectedIndex) {
+                            .pointerInput(clips, safeDuration) {
                                 fun movePlayhead(x: Float) {
                                     if (clips.isEmpty() || size.width <= 0) return
                                     val fraction = (x / size.width.toFloat()).coerceIn(0f, 1f)
                                     val target = (safeDuration * fraction).toLong().coerceIn(0L, duration)
                                     val location = locateTimelinePosition(clips, target) ?: return
-                                    if (location.first != selectedIndex) onSelect(location.first)
+                                    if (location.first != latestSelectedIndex.value) onSelect(location.first)
                                     onSeek(target)
                                 }
                                 awaitEachGesture {
