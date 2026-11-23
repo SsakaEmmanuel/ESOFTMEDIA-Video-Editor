@@ -71,6 +71,7 @@ import java.util.UUID
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 
 private val BG = Color(0xFF0D0D10)
 private val CARD = Color(0xFF19191E)
@@ -764,7 +765,7 @@ fun VideoEditorApp() {
                                                 exporting = false
                                                 status = "Choose where to save your exported video"
                                                 pendingExportFile = out
-                                                ctx.mainExecutor.execute {
+                                                android.os.Handler(android.os.Looper.getMainLooper()).post {
                                                     saveExportDocument.launch("ESOFTMEDIA-" + System.currentTimeMillis() + ".mp4")
                                                 }
                                                 return
