@@ -69,6 +69,7 @@ import org.json.JSONObject
 import java.io.File
 import java.util.UUID
 import kotlin.math.abs
+import kotlin.math.min
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -370,7 +371,8 @@ fun VideoEditorApp() {
     LaunchedEffect(Unit) {
         while (true) {
             val currentIndex = player.currentMediaItemIndex.coerceIn(0, clips.size)
-            position = clips.take(currentIndex).sumOf { it.length } + player.currentPosition.coerceAtLeast(0L)
+            position = (clips.take(currentIndex).sumOf { it.length } + player.currentPosition.coerceAtLeast(0L))
+                .coerceIn(0L, clips.sumOf { it.length })
             selectedIndex = player.currentMediaItemIndex.coerceIn(0, (clips.size - 1).coerceAtLeast(0))
             playing = player.isPlaying
             music.volume = musicVolume.coerceIn(0f, 1f)
@@ -1062,6 +1064,9 @@ private fun FrameThumbnail(uriText: String?, modifier: Modifier = Modifier) {
             }.getOrNull()
         }
     }
+    DisposableEffect(bitmap) {
+        onDispose { bitmap?.let { if (!it.isRecycled) it.recycle() } }
+    }
     if (bitmap != null) {
         Image(bitmap!!.asImageBitmap(), contentDescription = "Video thumbnail", modifier = modifier, contentScale = ContentScale.Crop)
     } else {
@@ -1593,7 +1598,7 @@ private fun TimelinePanel(
                             )
                             Box(
                                 Modifier.offset(x = (stripWidth * playheadFraction - 4.dp).coerceIn(0.dp, stripWidth - 8.dp))
-                                    .align(Alignment.TopCenter).size(8.dp).clip(CircleShape).background(AQUA)
+                                    .align(Alignment.TopStart).size(8.dp).clip(CircleShape).background(AQUA)
                             )
                         }
                     }
@@ -1639,9 +1644,19 @@ private fun ClipFilmstrip(clip: VideoClip, modifier: Modifier = Modifier) {
                     (0 until count).mapNotNull { index ->
                         val fraction = (index + 0.5f) / count
                         val sourceMs = clip.start + (clip.length * fraction).toLong()
-                        val raw = retriever.getFrameAtTime(sourceMs * 1000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                        val raw = if (Build.VERSION.SDK_INT >= 27) {
+                            retriever.getScaledFrameAtTime(
+                                sourceMs * 1000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 160, 90
+                            )
+                        } else {
+                            retriever.getFrameAtTime(sourceMs * 1000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                        }
                         if (raw == null) null else {
-                            val scaled = Bitmap.createScaledBitmap(raw, 160, 90, true)
+                            val scale = min(160f / raw.width, 90f / raw.height)
+                            val targetWidth = (raw.width * scale).toInt().coerceAtLeast(1)
+                            val targetHeight = (raw.height * scale).toInt().coerceAtLeast(1)
+                            val scaled = if (raw.width == targetWidth && raw.height == targetHeight) raw
+                                else Bitmap.createScaledBitmap(raw, targetWidth, targetHeight, true)
                             if (scaled !== raw) raw.recycle()
                             scaled
                         }
@@ -1649,6 +1664,9 @@ private fun ClipFilmstrip(clip: VideoClip, modifier: Modifier = Modifier) {
                 } finally { retriever.release() }
             }.getOrDefault(emptyList())
         }
+    }
+    DisposableEffect(frames) {
+        onDispose { frames.forEach { if (!it.isRecycled) it.recycle() } }
     }
     if (frames.isEmpty()) {
         FrameThumbnail(clip.uri.toString(), modifier)
