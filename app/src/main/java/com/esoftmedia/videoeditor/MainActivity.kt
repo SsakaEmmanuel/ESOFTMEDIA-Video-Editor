@@ -48,8 +48,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.C
 import androidx.media3.common.audio.ChannelMixingAudioProcessor
@@ -543,13 +543,7 @@ fun VideoEditorApp() {
                         { player.pause(); player.seekTo(0L); music.pause(); music.seekTo(0L) },
                         { if (clips.isNotEmpty()) player.seekTo((player.currentMediaItemIndex - 1).coerceAtLeast(0), 0L) },
                         { if (clips.isNotEmpty()) player.seekTo((player.currentMediaItemIndex + 1).coerceAtMost(clips.lastIndex), 0L) },
-                        { targetPosition ->
-                            var remaining = targetPosition.toLong().coerceAtLeast(0L)
-                            val targetIndex = clips.indexOfFirst { clip ->
-                                if (remaining <= clip.length) true else { remaining -= clip.length; false }
-                            }
-                            if (targetIndex >= 0) player.seekTo(targetIndex, remaining)
-                        },
+                        { targetPosition -> seekTimelinePosition(player, clips, targetPosition.toLong()) },
                         undo.isNotEmpty(),
                         redo.isNotEmpty(),
                         {
@@ -575,11 +569,7 @@ fun VideoEditorApp() {
                         position = position,
                         duration = clips.sumOf { it.length },
                         onSeek = { targetPosition ->
-                            var remaining = targetPosition.coerceAtLeast(0L)
-                            val targetIndex = clips.indexOfFirst { clip ->
-                                if (remaining <= clip.length) true else { remaining -= clip.length; false }
-                            }
-                            if (targetIndex >= 0) player.seekTo(targetIndex, remaining)
+                            seekTimelinePosition(player, clips, targetPosition)
                         },
                         onSelect = { index ->
                             selectedIndex = index
@@ -1238,6 +1228,24 @@ private fun decodeStyles(raw: String): Map<String, ClipStyle> = runCatching {
     }
 }.getOrDefault(emptyMap())
 
+private fun locateTimelinePosition(clips: List<VideoClip>, timelineMs: Long): Pair<Int, Long>? {
+    if (clips.isEmpty()) return null
+    var remaining = timelineMs.coerceIn(0L, clips.sumOf { it.length })
+    clips.forEachIndexed { index, clip ->
+        if (remaining < clip.length || index == clips.lastIndex) {
+            return index to remaining.coerceIn(0L, clip.length)
+        }
+        remaining -= clip.length
+    }
+    return null
+}
+
+private fun seekTimelinePosition(player: ExoPlayer, clips: List<VideoClip>, timelineMs: Long) {
+    locateTimelinePosition(clips, timelineMs)?.let { (index, localPosition) ->
+        player.seekTo(index, localPosition)
+    }
+}
+
 private fun durationMs(ctx: Context, uri: Uri): Long {
     val r = MediaMetadataRetriever()
     return try { r.setDataSource(ctx, uri); r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L }
@@ -1524,41 +1532,38 @@ private fun TimelinePanel(
                 Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         Modifier.width(stripWidth).height(64.dp)
-                            .pointerInput(clips, safeDuration) {
+                            .pointerInput(clips, safeDuration, selectedIndex) {
                                 fun movePlayhead(x: Float) {
                                     if (clips.isEmpty() || size.width <= 0) return
                                     val fraction = (x / size.width.toFloat()).coerceIn(0f, 1f)
                                     val target = (safeDuration * fraction).toLong().coerceIn(0L, duration)
-                                    var remaining = target
-                                    val index = clips.indexOfFirst { clip ->
-                                        if (remaining <= clip.length) true else { remaining -= clip.length; false }
-                                    }
-                                    if (index >= 0) {
-                                        onSelect(index)
-                                        onSeek(target)
-                                    }
+                                    val location = locateTimelinePosition(clips, target) ?: return
+                                    if (location.first != selectedIndex) onSelect(location.first)
+                                    onSeek(target)
                                 }
-                                detectTapGestures { tap -> movePlayhead(tap.x) }
-                            }
-                            .pointerInput(clips, safeDuration) {
-                                fun movePlayhead(x: Float) {
-                                    if (clips.isEmpty() || size.width <= 0) return
-                                    val fraction = (x / size.width.toFloat()).coerceIn(0f, 1f)
-                                    val target = (safeDuration * fraction).toLong().coerceIn(0L, duration)
-                                    var remaining = target
-                                    val index = clips.indexOfFirst { clip ->
-                                        if (remaining <= clip.length) true else { remaining -= clip.length; false }
+                                awaitEachGesture {
+                                    val down = awaitFirstDown(requireUnconsumed = false)
+                                    var dragging = false
+                                    var movedVertically = false
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                        if (!change.pressed) {
+                                            if (!dragging && !movedVertically) movePlayhead(down.position.x)
+                                            change.consume()
+                                            break
+                                        }
+                                        val dx = change.position.x - down.position.x
+                                        val dy = change.position.y - down.position.y
+                                        if (!dragging && abs(dy) > viewConfiguration.touchSlop && abs(dy) > abs(dx)) {
+                                            movedVertically = true
+                                        }
+                                        if (!dragging && abs(dx) > viewConfiguration.touchSlop) dragging = true
+                                        if (dragging) {
+                                            movePlayhead(change.position.x)
+                                            change.consume()
+                                        }
                                     }
-                                    if (index >= 0) {
-                                        onSelect(index)
-                                        onSeek(target)
-                                    }
-                                }
-                                detectDragGestures(
-                                    onDragStart = { start -> movePlayhead(start.x) }
-                                ) { change, _ ->
-                                    movePlayhead(change.position.x)
-                                    change.consume()
                                 }
                             }
                     ) {
