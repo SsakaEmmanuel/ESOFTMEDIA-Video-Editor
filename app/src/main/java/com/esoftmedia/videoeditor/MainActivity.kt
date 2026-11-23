@@ -113,7 +113,9 @@ data class SavedProject(
     val flipH: Boolean,
     val flipV: Boolean,
     val favorite: Boolean,
-    val stylesJson: String = ""
+    val stylesJson: String = "",
+    val musicVolume: Float = 0.8f,
+    val muteOriginal: Boolean = false
 ) {
     val clips: List<VideoClip> get() = decode(clipsJson)
     val durationMs: Long get() = clips.sumOf { it.length }
@@ -165,6 +167,7 @@ fun VideoEditorApp() {
     var selectedTool by remember { mutableStateOf("Trim") }
     var showHome by remember { mutableStateOf(true) }
     var pendingNewProject by remember { mutableStateOf(false) }
+    var pendingQuickTool by remember { mutableStateOf<String?>(null) }
     var projectId by remember { mutableStateOf(UUID.randomUUID().toString()) }
     var projectName by remember { mutableStateOf("Untitled Project") }
     var drafts = remember { mutableStateListOf<SavedProject>() }
@@ -217,10 +220,22 @@ fun VideoEditorApp() {
             if (pendingNewProject) {
                 showHome = false
                 pendingNewProject = false
+                tab = pendingQuickTool ?: "Edit"
+                selectedTool = when (tab) {
+                    "Filters", "Effects" -> "Filter"
+                    "Adjust" -> "Enhance"
+                    "Audio" -> "Music"
+                    "Text" -> "Text"
+                    "Crop" -> "Crop"
+                    "Export" -> "Export"
+                    else -> "Trim"
+                }
+                pendingQuickTool = null
             }
         } else {
             pendingNewProject = false
             if (uris.isNotEmpty()) Toast.makeText(ctx, "Could not read selected video.", Toast.LENGTH_LONG).show()
+            pendingQuickTool = null
         }
     }
     val chooseAudio = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -324,7 +339,8 @@ fun VideoEditorApp() {
             position = clips.take(currentIndex).sumOf { it.length } + player.currentPosition.coerceAtLeast(0L)
             selectedIndex = player.currentMediaItemIndex.coerceIn(0, (clips.size - 1).coerceAtLeast(0))
             playing = player.isPlaying
-            music.volume = musicVolume
+            music.volume = musicVolume.coerceIn(0f, 1f)
+            player.volume = if (muteOriginal) 0f else 1f
             if (playing && musicUri != null && !music.isPlaying) music.play()
             if (!playing && music.isPlaying) music.pause()
             delay(200)
@@ -354,7 +370,7 @@ fun VideoEditorApp() {
         val saved = SavedProject(
             projectId, projectName, System.currentTimeMillis(), encode(clips), musicUri?.toString(),
             caption, filter, aspect, brightness, contrast, saturation, lightness, rotation,
-            flipH, flipV, favorite, encodeStyles(clipStyles)
+            flipH, flipV, favorite, encodeStyles(clipStyles), musicVolume, muteOriginal
         )
         val existing = drafts.indexOfFirst { it.id == projectId }
         if (existing >= 0) drafts[existing] = saved else drafts.add(0, saved)
@@ -378,7 +394,8 @@ fun VideoEditorApp() {
         musicUri = null; musicDuration = 0L; caption = ""; filter = "Original"
         brightness = 0f; contrast = 0f; saturation = 0f; lightness = 0f
         aspect = "Original"; rotation = 0f; flipH = false; flipV = false; speed = 1f
-        favorite = false; selectedIndex = 0; tab = "Edit"
+        favorite = false; musicVolume = 0.8f; muteOriginal = false; selectedIndex = 0; tab = "Edit"
+        pendingQuickTool = null
         projectId = UUID.randomUUID().toString()
         projectName = "Project " + (drafts.size + 1)
         selectedTool = "Trim"
@@ -409,6 +426,9 @@ fun VideoEditorApp() {
         committedStyle = draft.clips.firstOrNull()?.let { clipStyles[it.id] } ?: ClipStyle()
         editingStyle = committedStyle
         favorite = draft.favorite
+        musicVolume = draft.musicVolume.coerceIn(0f, 1f)
+        muteOriginal = draft.muteOriginal
+        player.volume = if (muteOriginal) 0f else 1f
         musicUri = draft.musicUri?.let { Uri.parse(it) }
         musicDuration = musicUri?.let { durationMs(ctx, it) } ?: 0L
         musicUri?.let { uri -> runCatching { music.setMediaItem(MediaItem.fromUri(uri)); music.prepare() }.onFailure { musicUri = null } }
@@ -418,7 +438,7 @@ fun VideoEditorApp() {
 
     LaunchedEffect(
         clips.map { it.id + ":" + it.start + ":" + it.end },
-        clipStyles, caption, musicUri, favorite
+        clipStyles, caption, musicUri, favorite, musicVolume, muteOriginal
     ) {
         if (!showHome && clips.isNotEmpty()) {
             delay(650)
@@ -439,6 +459,7 @@ fun VideoEditorApp() {
                 drafts = drafts,
                 onNewProject = {
                     resetForNewProject()
+                    pendingQuickTool = null
                     pendingNewProject = true
                     chooseVideos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
                 },
@@ -452,6 +473,7 @@ fun VideoEditorApp() {
                     val latest = drafts.firstOrNull()
                     if (latest == null) {
                         resetForNewProject()
+                        pendingQuickTool = target
                         pendingNewProject = true
                         chooseVideos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
                     } else {
@@ -759,6 +781,7 @@ private fun encodeDrafts(drafts: List<SavedProject>): String {
             put("saturation", draft.saturation.toDouble()); put("lightness", draft.lightness.toDouble())
             put("rotation", draft.rotation.toDouble()); put("flipH", draft.flipH); put("flipV", draft.flipV)
             put("favorite", draft.favorite); put("styles", draft.stylesJson)
+            put("musicVolume", draft.musicVolume.toDouble()); put("muteOriginal", draft.muteOriginal)
         })
     }
     return array.toString()
@@ -786,7 +809,9 @@ private fun decodeDrafts(raw: String?): List<SavedProject> = runCatching {
                 item.optBoolean("flipH", false),
                 item.optBoolean("flipV", false),
                 item.optBoolean("favorite", false),
-                item.optString("styles", "")
+                item.optString("styles", ""),
+                item.optDouble("musicVolume", 0.8).toFloat().coerceIn(0f, 1f),
+                item.optBoolean("muteOriginal", false)
             )
         }
     }
@@ -1682,7 +1707,15 @@ private fun MosaicPanel(value: Float, onChange: (Float) -> Unit, onCommit: () ->
     Column(Modifier.fillMaxWidth().background(CARD, RoundedCornerShape(15.dp)).padding(12.dp)) {
         Text("AUDIO MIXER", color = AQUA, fontWeight = FontWeight.Bold)
         Row(verticalAlignment = Alignment.CenterVertically) { Text(if (has) "Music track selected" else "No music track", color = PAPER, fontSize = 11.sp, modifier = Modifier.weight(1f)); Action(if (has) "Replace" else "Add music", add) }
-        if (has) { Adjust("Music volume", volume * 100f, { setVolume(it / 100f) }); Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(muted, setMuted); Text("Mute original audio", color = PAPER, fontSize = 11.sp); Spacer(Modifier.weight(1f)); TextButton(remove) { Text("Remove", color = Color(0xFFFF7777)) } }; Text("Background audio is added to the video export.", color = Color.LightGray, fontSize = 10.sp) }
+        if (has) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Music volume", color = PAPER, fontSize = 11.sp, modifier = Modifier.width(82.dp))
+                Slider(value = volume.coerceIn(0f, 1f), onValueChange = setVolume, valueRange = 0f..1f, modifier = Modifier.weight(1f).height(32.dp))
+                Text("${(volume.coerceIn(0f, 1f) * 100f).toInt()}%", color = AQUA, fontSize = 10.sp, modifier = Modifier.width(34.dp))
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(muted, setMuted); Text("Mute original audio", color = PAPER, fontSize = 11.sp); Spacer(Modifier.weight(1f)); TextButton(remove) { Text("Remove", color = Color(0xFFFF7777)) } }
+            Text("Background audio is added to the video export.", color = Color.LightGray, fontSize = 10.sp)
+        }
     }
 }
 @Composable private fun TextPanel(caption: String, add: () -> Unit, remove: () -> Unit) {
