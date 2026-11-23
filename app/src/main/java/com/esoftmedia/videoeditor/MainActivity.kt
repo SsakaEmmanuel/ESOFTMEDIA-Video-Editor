@@ -703,7 +703,11 @@ fun VideoEditorApp() {
                                 }
                                 val sequences = mutableListOf(EditedMediaItemSequence.Builder(items).build())
                                 if (musicUri != null && musicDuration > 0L) {
-                                    val cut = minOf(musicDuration, clips.sumOf { it.length })
+                                    val renderedDuration = clips.sumOf { clip ->
+                                        val clipSpeed = (clipStyles[clip.id]?.speed ?: 1f).coerceIn(0.25f, 4f)
+                                        (clip.length / clipSpeed).toLong().coerceAtLeast(1L)
+                                    }
+                                    val cut = minOf(musicDuration, renderedDuration)
                                     if (cut > 0L) {
                                         val audioItem = MediaItem.Builder().setUri(musicUri!!).setClippingConfiguration(
                                             MediaItem.ClippingConfiguration.Builder().setStartPositionMs(0L).setEndPositionMs(cut).build()
