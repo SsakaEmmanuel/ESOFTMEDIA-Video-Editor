@@ -47,6 +47,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.C
 import androidx.media3.common.Effect
@@ -1429,7 +1431,22 @@ private fun TimelinePanel(
                 val addWidth = 48.dp
                 val stripWidth = (maxWidth - addWidth).coerceAtLeast(30.dp)
                 Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.width(stripWidth).height(64.dp)) {
+                    Box(
+                        Modifier.width(stripWidth).height(64.dp).pointerInput(clips, safeDuration) {
+                            detectTapGestures { tap ->
+                                val fraction = (tap.x / size.width.toFloat()).coerceIn(0f, 1f)
+                                val target = (safeDuration * fraction).toLong()
+                                var remaining = target
+                                val index = clips.indexOfFirst { clip ->
+                                    if (remaining <= clip.length) true else { remaining -= clip.length; false }
+                                }
+                                if (index >= 0) {
+                                    onSelect(index)
+                                    onSeek(target)
+                                }
+                            }
+                        }
+                    ) {
                         Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                             clips.forEachIndexed { index, clip ->
                                 Box(
@@ -1437,7 +1454,6 @@ private fun TimelinePanel(
                                         .fillMaxHeight().clip(RoundedCornerShape(6.dp))
                                         .border(if (index == selectedIndex) 2.dp else 1.dp,
                                             if (index == selectedIndex) AQUA else Color(0xFF404047), RoundedCornerShape(6.dp))
-                                        .clickable { onSelect(index) }
                                 ) {
                                     ClipFilmstrip(clip, Modifier.fillMaxSize())
                                     if (index != selectedIndex) Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = .12f)))
