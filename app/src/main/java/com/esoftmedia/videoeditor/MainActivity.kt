@@ -52,6 +52,8 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.C
+import androidx.media3.common.audio.ChannelMixingAudioProcessor
+import androidx.media3.common.audio.ChannelMixingMatrix
 import androidx.media3.common.Effect
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackParameters
@@ -128,6 +130,36 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun VideoEditorApp() {
     val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var pendingExportFile by remember { mutableStateOf<File?>(null) }
+    val saveExportDocument = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("video/mp4")) { destination ->
+        val source = pendingExportFile
+        pendingExportFile = null
+        if (destination == null || source == null) {
+            source?.delete()
+            status = "Export cancelled"
+        } else {
+            scope.launch(Dispatchers.IO) {
+                runCatching {
+                    ctx.contentResolver.openOutputStream(destination)?.use { output ->
+                        source.inputStream().use { input -> input.copyTo(output) }
+                    } ?: error("Cannot open destination")
+                    source.delete()
+                }.onSuccess {
+                    withContext(Dispatchers.Main) {
+                        status = "Export complete • Saved to selected location"
+                        Toast.makeText(ctx, "Video exported successfully", Toast.LENGTH_LONG).show()
+                    }
+                }.onFailure { error ->
+                    source.delete()
+                    withContext(Dispatchers.Main) {
+                        status = "Save failed: " + (error.message ?: "Unknown error")
+                        Toast.makeText(ctx, status, Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
+    }
     val player = remember { ExoPlayer.Builder(ctx).build() }
     val music = remember { ExoPlayer.Builder(ctx).build() }
     val clips = remember { mutableStateListOf<VideoClip>() }
@@ -682,7 +714,20 @@ fun VideoEditorApp() {
                                         val audioItem = MediaItem.Builder().setUri(musicUri!!).setClippingConfiguration(
                                             MediaItem.ClippingConfiguration.Builder().setStartPositionMs(0L).setEndPositionMs(cut).build()
                                         ).build()
-                                        sequences.add(EditedMediaItemSequence.Builder(listOf(EditedMediaItem.Builder(audioItem).setRemoveVideo(true).build())).build())
+                                        val musicProcessor = ChannelMixingAudioProcessor()
+                                        for (channelCount in 1..6) {
+                                            val coefficients = FloatArray(channelCount * channelCount) { index ->
+                                                if (index % (channelCount + 1) == 0) musicVolume.coerceIn(0f, 1f) else 0f
+                                            }
+                                            musicProcessor.putChannelMixingMatrix(
+                                                ChannelMixingMatrix(channelCount, channelCount, coefficients)
+                                            )
+                                        }
+                                        val editedAudio = EditedMediaItem.Builder(audioItem)
+                                            .setRemoveVideo(true)
+                                            .setEffects(Effects(listOf(musicProcessor), emptyList()))
+                                            .build()
+                                        sequences.add(EditedMediaItemSequence.Builder(listOf(editedAudio)).build())
                                     }
                                 }
                                 val composition = MediaComposition.Builder(sequences).build()
@@ -691,26 +736,43 @@ fun VideoEditorApp() {
                                 val transformer = Transformer.Builder(ctx).addListener(object : Transformer.Listener {
                                     override fun onCompleted(composition: MediaComposition, exportResult: ExportResult) {
                                         try {
+                                            if (!out.exists() || out.length() <= 0L) error("Renderer produced an empty file")
                                             if (Build.VERSION.SDK_INT >= 29) {
-                                                val values = ContentValues().apply {
-                                                    put(MediaStore.Video.Media.DISPLAY_NAME, "ESOFTMEDIA-" + System.currentTimeMillis() + ".mp4")
-                                                    put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
-                                                    put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/ESOFTMEDIA")
-                                                    put(MediaStore.Video.Media.IS_PENDING, 1)
+                                                var savedUri: Uri? = null
+                                                try {
+                                                    val values = ContentValues().apply {
+                                                        put(MediaStore.Video.Media.DISPLAY_NAME, "ESOFTMEDIA-" + System.currentTimeMillis() + ".mp4")
+                                                        put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+                                                        put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/ESOFTMEDIA")
+                                                        put(MediaStore.Video.Media.IS_PENDING, 1)
+                                                    }
+                                                    savedUri = ctx.contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values) ?: error("Cannot create destination")
+                                                    ctx.contentResolver.openOutputStream(savedUri!!)?.use { output ->
+                                                        out.inputStream().use { input -> input.copyTo(output) }
+                                                    } ?: error("Cannot write destination")
+                                                    values.clear(); values.put(MediaStore.Video.Media.IS_PENDING, 0)
+                                                    ctx.contentResolver.update(savedUri!!, values, null, null)
+                                                    status = "Export complete • Movies/ESOFTMEDIA"
+                                                    Toast.makeText(ctx, "Video saved to Movies/ESOFTMEDIA", Toast.LENGTH_LONG).show()
+                                                } catch (error: Exception) {
+                                                    savedUri?.let { runCatching { ctx.contentResolver.delete(it, null, null) } }
+                                                    throw error
+                                                } finally {
+                                                    out.delete()
                                                 }
-                                                val savedUri = ctx.contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values) ?: error("Cannot create destination")
-                                                ctx.contentResolver.openOutputStream(savedUri)?.use { output -> out.inputStream().use { input -> input.copyTo(output) } } ?: error("Cannot write destination")
-                                                values.clear(); values.put(MediaStore.Video.Media.IS_PENDING, 0)
-                                                ctx.contentResolver.update(savedUri, values, null, null)
-                                                status = "Export complete • Movies/ESOFTMEDIA"
-                                                Toast.makeText(ctx, "Video saved to Movies/ESOFTMEDIA", Toast.LENGTH_LONG).show()
                                             } else {
-                                                status = "Rendered in app storage: " + out.absolutePath
-                                                Toast.makeText(ctx, status, Toast.LENGTH_LONG).show()
+                                                exporting = false
+                                                status = "Choose where to save your exported video"
+                                                pendingExportFile = out
+                                                ctx.mainExecutor.execute {
+                                                    saveExportDocument.launch("ESOFTMEDIA-" + System.currentTimeMillis() + ".mp4")
+                                                }
+                                                return
                                             }
                                         } catch (error: Exception) {
-                                            status = "Save failed: " + error.message
+                                            status = "Save failed: " + (error.message ?: "Unknown error")
                                             Toast.makeText(ctx, status, Toast.LENGTH_LONG).show()
+                                            out.delete()
                                         }
                                         exporting = false
                                     }
@@ -718,11 +780,13 @@ fun VideoEditorApp() {
                                         exporting = false
                                         status = "Export failed: " + exportException.message
                                         Toast.makeText(ctx, status, Toast.LENGTH_LONG).show()
+                                        out.delete()
                                     }
                                 }).build()
                                 runCatching { transformer.start(composition, out.absolutePath) }.onFailure {
                                     exporting = false
                                     status = "Export start failed: " + it.message
+                                    out.delete()
                                 }
                             }
                         })
