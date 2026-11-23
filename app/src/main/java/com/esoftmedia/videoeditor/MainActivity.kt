@@ -1333,11 +1333,11 @@ private fun effects(
             val matrix = Matrix()
             when (animation) {
                 "Zoom In" -> {
-                    val scale = 1.28f - (0.28f * progress)
+                    val scale = 0.72f + (0.28f * progress)
                     matrix.setScale(scale, scale)
                 }
                 "Zoom Out" -> {
-                    val scale = 0.78f + (0.22f * progress)
+                    val scale = 1.28f - (0.28f * progress)
                     matrix.setScale(scale, scale)
                 }
                 "Slide Left" -> matrix.setTranslate((1f - progress) * 0.8f, 0f)
