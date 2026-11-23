@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.C
 import androidx.media3.common.Effect
@@ -1432,20 +1433,44 @@ private fun TimelinePanel(
                 val stripWidth = (maxWidth - addWidth).coerceAtLeast(30.dp)
                 Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
                     Box(
-                        Modifier.width(stripWidth).height(64.dp).pointerInput(clips, safeDuration) {
-                            detectTapGestures { tap ->
-                                val fraction = (tap.x / size.width.toFloat()).coerceIn(0f, 1f)
-                                val target = (safeDuration * fraction).toLong()
-                                var remaining = target
-                                val index = clips.indexOfFirst { clip ->
-                                    if (remaining <= clip.length) true else { remaining -= clip.length; false }
+                        Modifier.width(stripWidth).height(64.dp)
+                            .pointerInput(clips, safeDuration) {
+                                fun movePlayhead(x: Float) {
+                                    if (clips.isEmpty() || size.width <= 0) return
+                                    val fraction = (x / size.width.toFloat()).coerceIn(0f, 1f)
+                                    val target = (safeDuration * fraction).toLong().coerceIn(0L, duration)
+                                    var remaining = target
+                                    val index = clips.indexOfFirst { clip ->
+                                        if (remaining <= clip.length) true else { remaining -= clip.length; false }
+                                    }
+                                    if (index >= 0) {
+                                        onSelect(index)
+                                        onSeek(target)
+                                    }
                                 }
-                                if (index >= 0) {
-                                    onSelect(index)
-                                    onSeek(target)
+                                detectTapGestures { tap -> movePlayhead(tap.x) }
+                            }
+                            .pointerInput(clips, safeDuration) {
+                                fun movePlayhead(x: Float) {
+                                    if (clips.isEmpty() || size.width <= 0) return
+                                    val fraction = (x / size.width.toFloat()).coerceIn(0f, 1f)
+                                    val target = (safeDuration * fraction).toLong().coerceIn(0L, duration)
+                                    var remaining = target
+                                    val index = clips.indexOfFirst { clip ->
+                                        if (remaining <= clip.length) true else { remaining -= clip.length; false }
+                                    }
+                                    if (index >= 0) {
+                                        onSelect(index)
+                                        onSeek(target)
+                                    }
+                                }
+                                detectDragGestures(
+                                    onDragStart = { start -> movePlayhead(start.x) }
+                                ) { change, _ ->
+                                    movePlayhead(change.position.x)
+                                    change.consume()
                                 }
                             }
-                        }
                     ) {
                         Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                             clips.forEachIndexed { index, clip ->
